@@ -37,8 +37,36 @@ interface LoginRecord {
   updatedAt: number
   deletedAt?: number
   favorite?: boolean
-  category?: string
+  labelIds?: string[]
 }
+
+interface LabelRecord {
+  id: string
+  name: string
+  color: string // hex, e.g. #2DD4BF
+  createdAt: number
+}
+
+export interface LabelSummary {
+  id: string
+  name: string
+  color: string
+  createdAt: number
+}
+
+// Rotated through when a label is created without an explicit color (e.g. AI suggestions).
+const LABEL_COLOR_PALETTE = [
+  '#2DD4BF', // teal
+  '#F59E0B', // amber
+  '#F87171', // red
+  '#A78BFA', // violet
+  '#60A5FA', // blue
+  '#34D399', // green
+  '#F472B6', // pink
+  '#FBBF24', // yellow
+  '#818CF8', // indigo
+  '#FB923C' // orange
+]
 
 // Masked shapes sent to the renderer — the secret field never leaves the main
 // process except through the explicit, biometric-gated reveal/copy calls.
@@ -60,7 +88,7 @@ export interface LoginSummary {
   createdAt: number
   updatedAt: number
   favorite: boolean
-  category?: string
+  labelIds: string[]
 }
 
 function toApiKeySummary(r: ApiKeyRecord): ApiKeySummary {
@@ -84,16 +112,21 @@ function toLoginSummary(r: LoginRecord): LoginSummary {
     createdAt: r.createdAt,
     updatedAt: r.updatedAt ?? r.createdAt,
     favorite: r.favorite ?? false,
-    category: r.category
+    labelIds: r.labelIds ?? []
   }
+}
+
+function toLabelSummary(r: LabelRecord): LabelSummary {
+  return { id: r.id, name: r.name, color: r.color, createdAt: r.createdAt }
 }
 
 interface VaultData {
   apiKeys: ApiKeyRecord[]
   logins: LoginRecord[]
+  labels: LabelRecord[]
 }
 
-const EMPTY_VAULT: VaultData = { apiKeys: [], logins: [] }
+const EMPTY_VAULT: VaultData = { apiKeys: [], logins: [], labels: [] }
 
 function vaultPath(): string {
   return join(app.getPath('userData'), 'vault.enc')
@@ -130,7 +163,9 @@ class VaultStore {
     const raw = await readFile(vaultPath(), 'utf8')
     const encrypted: EncryptedVault = JSON.parse(raw)
     const { plaintext, key } = await decryptVault(encrypted, masterPassword)
-    this.data = JSON.parse(plaintext)
+    const data: VaultData = JSON.parse(plaintext)
+    if (!data.labels) data.labels = [] // vaults created before labels existed
+    this.data = data
     this.key = key
     this.salt = Buffer.from(encrypted.salt, 'hex')
     await this.purgeOldTrash()
@@ -141,7 +176,9 @@ class VaultStore {
     const raw = await readFile(vaultPath(), 'utf8')
     const encrypted: EncryptedVault = JSON.parse(raw)
     const plaintext = decryptWithKey(encrypted, key)
-    this.data = JSON.parse(plaintext)
+    const data: VaultData = JSON.parse(plaintext)
+    if (!data.labels) data.labels = [] // vaults created before labels existed
+    this.data = data
     this.key = key
     this.salt = Buffer.from(encrypted.salt, 'hex')
     await this.purgeOldTrash()
@@ -392,13 +429,91 @@ class VaultStore {
     return toLoginSummary(login)
   }
 
-  /** Persists AI-assigned categories so they survive without recomputation. */
-  async setLoginCategories(entries: Array<{ id: string; category: string }>): Promise<void> {
+  listLabels(): LabelSummary[] {
+    return this.ensureUnlocked()
+      .labels.slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(toLabelSummary)
+  }
+
+  async addLabel(name: string, color?: string): Promise<LabelSummary> {
     const data = this.ensureUnlocked()
-    const categoryById = new Map(entries.map((e) => [e.id, e.category]))
+    const full: LabelRecord = {
+      id: randomUUID(),
+      name: name.trim(),
+      color: color ?? LABEL_COLOR_PALETTE[data.labels.length % LABEL_COLOR_PALETTE.length],
+      createdAt: Date.now()
+    }
+    data.labels.push(full)
+    await this.persist()
+    return toLabelSummary(full)
+  }
+
+  async updateLabel(id: string, patch: { name: string; color: string }): Promise<LabelSummary> {
+    const data = this.ensureUnlocked()
+    const label = data.labels.find((l) => l.id === id)
+    if (!label) throw new Error('Label not found')
+    label.name = patch.name.trim()
+    label.color = patch.color
+    await this.persist()
+    return toLabelSummary(label)
+  }
+
+  /** Removing a label also strips it from every login it was assigned to. */
+  async deleteLabel(id: string): Promise<void> {
+    const data = this.ensureUnlocked()
+    data.labels = data.labels.filter((l) => l.id !== id)
     for (const login of data.logins) {
-      const category = categoryById.get(login.id)
-      if (category) login.category = category
+      if (login.labelIds?.includes(id)) {
+        login.labelIds = login.labelIds.filter((labelId) => labelId !== id)
+      }
+    }
+    await this.persist()
+  }
+
+  async toggleLoginLabel(loginId: string, labelId: string): Promise<LoginSummary> {
+    const data = this.ensureUnlocked()
+    const login = data.logins.find((l) => l.id === loginId)
+    if (!login) throw new Error('Login not found')
+    const current = login.labelIds ?? []
+    login.labelIds = current.includes(labelId)
+      ? current.filter((id) => id !== labelId)
+      : [...current, labelId]
+    await this.persist()
+    return toLoginSummary(login)
+  }
+
+  /**
+   * Applies AI-suggested label names to logins, creating any label that
+   * doesn't already exist (case-insensitive match) and unioning label ids
+   * onto each login rather than overwriting its existing labels.
+   */
+  async applySuggestedLabels(suggestions: Array<{ loginId: string; labelNames: string[] }>): Promise<void> {
+    const data = this.ensureUnlocked()
+    const byLowerName = new Map(data.labels.map((l) => [l.name.toLowerCase(), l]))
+
+    for (const { loginId, labelNames } of suggestions) {
+      const login = data.logins.find((l) => l.id === loginId)
+      if (!login) continue
+
+      const labelIds = new Set(login.labelIds ?? [])
+      for (const rawName of labelNames) {
+        const name = rawName.trim()
+        if (!name) continue
+        let label = byLowerName.get(name.toLowerCase())
+        if (!label) {
+          label = {
+            id: randomUUID(),
+            name,
+            color: LABEL_COLOR_PALETTE[data.labels.length % LABEL_COLOR_PALETTE.length],
+            createdAt: Date.now()
+          }
+          data.labels.push(label)
+          byLowerName.set(name.toLowerCase(), label)
+        }
+        labelIds.add(label.id)
+      }
+      login.labelIds = [...labelIds]
     }
     await this.persist()
   }

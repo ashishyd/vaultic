@@ -42,13 +42,19 @@ const vaultAPI: VaultAPI = {
   generateStrongPassword: (length) => ipcRenderer.invoke('vault:generateStrongPassword', length),
 
   checkAiCliAvailable: () => ipcRenderer.invoke('vault:checkAiCliAvailable'),
-  categorizeLoginsWithAi: () => ipcRenderer.invoke('vault:categorizeLoginsWithAi'),
+  suggestLabelsWithAi: () => ipcRenderer.invoke('vault:suggestLabelsWithAi'),
 
   updateLoginPassword: (id, newPassword) => ipcRenderer.invoke('vault:updateLoginPassword', id, newPassword),
   updateApiKey: (id, patch) => ipcRenderer.invoke('vault:updateApiKey', id, patch),
   updateLogin: (id, patch) => ipcRenderer.invoke('vault:updateLogin', id, patch),
 
   setLoginFavorite: (id, favorite) => ipcRenderer.invoke('vault:setLoginFavorite', id, favorite),
+
+  listLabels: () => ipcRenderer.invoke('vault:listLabels'),
+  addLabel: (name, color) => ipcRenderer.invoke('vault:addLabel', name, color),
+  updateLabel: (id, patch) => ipcRenderer.invoke('vault:updateLabel', id, patch),
+  deleteLabel: (id) => ipcRenderer.invoke('vault:deleteLabel', id),
+  toggleLoginLabel: (loginId, labelId) => ipcRenderer.invoke('vault:toggleLoginLabel', loginId, labelId),
 
   getSettings: () => ipcRenderer.invoke('vault:getSettings'),
   setSettings: (settings) => ipcRenderer.invoke('vault:setSettings', settings),

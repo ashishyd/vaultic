@@ -30,18 +30,6 @@ async function spawnEnv(): Promise<NodeJS.ProcessEnv> {
   return path ? { ...process.env, PATH: path } : process.env
 }
 
-const CATEGORIES = [
-  'Social',
-  'Finance',
-  'Work',
-  'Shopping',
-  'Entertainment',
-  'Developer',
-  'Email',
-  'Utilities',
-  'Other'
-] as const
-
 /** Checks which supported local CLI is installed, without invoking it. */
 export async function detectAvailableCli(): Promise<AiCli | null> {
   const env = await spawnEnv()
@@ -64,19 +52,26 @@ export interface CategorizableLogin {
 
 // Keep each CLI call small: avoids the process timing out or hitting the
 // model's context/output limits on a vault with hundreds of logins, and keeps
-// a single slow/failing batch from taking down the whole categorization run.
+// a single slow/failing batch from taking down the whole suggestion run.
 const BATCH_SIZE = 40
 const BATCH_TIMEOUT_MS = 45_000
 
-function buildPrompt(items: CategorizableLogin[]): string {
+function buildLabelPrompt(items: CategorizableLogin[], existingLabelNames: string[]): string {
   const list = items.map((i) => ({ id: i.id, service: i.service, url: i.url }))
-  return [
+  const lines = [
     'You are a strict JSON API, not a chat assistant. Do not use any tools.',
-    `Categorize each website/service below into exactly one of: ${CATEGORIES.join(', ')}.`,
-    'Respond with ONLY a single-line JSON object mapping id to category, e.g. {"1":"Finance","2":"Social"}.',
+    'For each website/service below, suggest 1-2 short organizational labels for it (e.g. "Finance", "Work", "Dev Tools", "Shopping").'
+  ]
+  if (existingLabelNames.length > 0) {
+    lines.push(`Prefer reusing one of these existing labels when it fits: ${existingLabelNames.join(', ')}.`)
+    lines.push('Only invent a new label name if none of the existing ones fit well.')
+  }
+  lines.push(
+    'Respond with ONLY a single-line JSON object mapping id to an array of label strings, e.g. {"1":["Finance"],"2":["Social","Entertainment"]}.',
     'No markdown fences, no explanation, no other text.',
     `Input: ${JSON.stringify(list)}`
-  ].join('\n')
+  )
+  return lines.join('\n')
 }
 
 function extractJsonObject(raw: string): string {
@@ -101,15 +96,8 @@ function cleanErrorMessage(err: unknown, cli: AiCli): string {
   return `${cli} exited with an error and no output.`
 }
 
-async function runBatch(
-  cli: AiCli,
-  items: CategorizableLogin[],
-  env: NodeJS.ProcessEnv
-): Promise<Record<string, string>> {
-  const prompt = buildPrompt(items)
+async function runCli(cli: AiCli, prompt: string, env: NodeJS.ProcessEnv): Promise<string> {
   const cwd = os.tmpdir() // avoid picking up this project's CLAUDE.md/agentic context
-
-  let stdout: string
   try {
     if (cli === 'claude') {
       const result = await execFileAsync(
@@ -118,65 +106,76 @@ async function runBatch(
         { cwd, env, timeout: BATCH_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 }
       )
       const envelope = JSON.parse(result.stdout)
-      stdout = envelope.result ?? result.stdout
-    } else {
-      // cursor-agent's -p mode has tool access by default (per its own --help);
-      // constrain it as tightly as its flags allow for this text-only task.
-      const result = await execFileAsync(
-        'cursor-agent',
-        ['-p', prompt, '--output-format', 'text', '--sandbox', 'enabled', '--workspace', cwd],
-        { cwd, env, timeout: BATCH_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 }
-      )
-      stdout = result.stdout
+      return envelope.result ?? result.stdout
     }
+    // cursor-agent's -p mode has tool access by default (per its own --help);
+    // constrain it as tightly as its flags allow for this text-only task.
+    const result = await execFileAsync(
+      'cursor-agent',
+      ['-p', prompt, '--output-format', 'text', '--sandbox', 'enabled', '--workspace', cwd],
+      { cwd, env, timeout: BATCH_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 }
+    )
+    return result.stdout
   } catch (err) {
     throw new Error(cleanErrorMessage(err, cli))
   }
+}
 
-  const jsonText = extractJsonObject(stdout)
-  const parsed = JSON.parse(jsonText) as Record<string, unknown>
+async function runLabelBatch(
+  cli: AiCli,
+  items: CategorizableLogin[],
+  existingLabelNames: string[],
+  env: NodeJS.ProcessEnv
+): Promise<Record<string, string[]>> {
+  const stdout = await runCli(cli, buildLabelPrompt(items, existingLabelNames), env)
+  const parsed = JSON.parse(extractJsonObject(stdout)) as Record<string, unknown>
 
-  const categories: Record<string, string> = {}
-  for (const [id, category] of Object.entries(parsed)) {
-    categories[id] = typeof category === 'string' && (CATEGORIES as readonly string[]).includes(category)
-      ? category
-      : 'Other'
+  const suggestions: Record<string, string[]> = {}
+  for (const [id, value] of Object.entries(parsed)) {
+    if (Array.isArray(value)) {
+      const names = value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0).slice(0, 2)
+      if (names.length > 0) suggestions[id] = names
+    } else if (typeof value === 'string' && value.trim()) {
+      suggestions[id] = [value]
+    }
   }
-  return categories
+  return suggestions
 }
 
 /**
  * Sends ONLY {id, service, url} to the local CLI — never usernames, passwords,
- * or notes. Uses whichever supported CLI is installed (claude, then cursor-agent).
- * Runs in small batches so a large vault doesn't hit a single call's time or
- * size limits; if some batches fail, the successful ones are still returned.
+ * or notes — and asks it to suggest 1-2 short organizational labels per login,
+ * preferring labels that already exist. Runs in small batches so a large vault
+ * doesn't hit a single call's time or size limits; if some batches fail, the
+ * successful ones are still returned.
  */
-export async function categorizeWithAi(
-  items: CategorizableLogin[]
-): Promise<{ categories: Record<string, string>; cli: AiCli; failedCount: number }> {
+export async function suggestLabelsWithAi(
+  items: CategorizableLogin[],
+  existingLabelNames: string[]
+): Promise<{ suggestions: Record<string, string[]>; cli: AiCli; failedCount: number }> {
   const cli = await detectAvailableCli()
   if (!cli) {
     throw new Error('No supported AI CLI (claude or cursor-agent) found on this Mac.')
   }
 
   const env = await spawnEnv()
-  const categories: Record<string, string> = {}
+  const suggestions: Record<string, string[]> = {}
   let failedCount = 0
   let lastError: string | null = null
 
   for (let i = 0; i < items.length; i += BATCH_SIZE) {
     const batch = items.slice(i, i + BATCH_SIZE)
     try {
-      Object.assign(categories, await runBatch(cli, batch, env))
+      Object.assign(suggestions, await runLabelBatch(cli, batch, existingLabelNames, env))
     } catch (err) {
       failedCount += batch.length
       lastError = err instanceof Error ? err.message : String(err)
     }
   }
 
-  if (Object.keys(categories).length === 0 && lastError) {
+  if (Object.keys(suggestions).length === 0 && lastError) {
     throw new Error(lastError)
   }
 
-  return { categories, cli, failedCount }
+  return { suggestions, cli, failedCount }
 }

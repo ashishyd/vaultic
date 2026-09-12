@@ -6,7 +6,7 @@ import { scanForEnvFiles } from './scanner'
 import { isBiometricsAvailable, biometricGate } from './biometric'
 import { parseLoginsCsvFile, loginsToCsv } from './csv'
 import { analyzeLogins, generateStrongPassword } from './password-strength'
-import { categorizeWithAi, detectAvailableCli } from './ai-cli'
+import { suggestLabelsWithAi, detectAvailableCli } from './ai-cli'
 import { readSettings, writeSettings, type AppSettings } from './settings'
 import { getFrontmostChromeTabUrl } from './chrome'
 
@@ -199,21 +199,34 @@ export function registerVaultIpcHandlers(): void {
   ipcMain.handle('vault:checkAiCliAvailable', () => detectAvailableCli())
 
   // Sends ONLY {id, service, url} to the local CLI — never usernames, passwords, or notes.
-  ipcMain.handle('vault:categorizeLoginsWithAi', async () => {
+  ipcMain.handle('vault:suggestLabelsWithAi', async () => {
     const items = vaultStore.getLoginsMetadata()
-    if (items.length === 0) return { success: false as const, error: 'No logins to categorize.' }
+    if (items.length === 0) return { success: false as const, error: 'No logins to suggest labels for.' }
     try {
-      const { categories, cli, failedCount } = await categorizeWithAi(items)
-      // Persist so the categories survive without recomputing on every open.
-      await vaultStore.setLoginCategories(Object.entries(categories).map(([id, category]) => ({ id, category })))
-      return { success: true as const, categories, cli, failedCount }
+      const existingLabelNames = vaultStore.listLabels().map((l) => l.name)
+      const { suggestions, cli, failedCount } = await suggestLabelsWithAi(items, existingLabelNames)
+      // Persist immediately (creating any new labels needed) so suggestions survive without recomputation.
+      await vaultStore.applySuggestedLabels(
+        Object.entries(suggestions).map(([loginId, labelNames]) => ({ loginId, labelNames }))
+      )
+      return { success: true as const, suggestions, cli, failedCount }
     } catch (err) {
-      return { success: false as const, error: err instanceof Error ? err.message : 'AI categorization failed.' }
+      return { success: false as const, error: err instanceof Error ? err.message : 'AI label suggestion failed.' }
     }
   })
 
   ipcMain.handle('vault:setLoginFavorite', (_e, id: string, favorite: boolean) =>
     vaultStore.setLoginFavorite(id, favorite)
+  )
+
+  ipcMain.handle('vault:listLabels', () => vaultStore.listLabels())
+  ipcMain.handle('vault:addLabel', (_e, name: string, color?: string) => vaultStore.addLabel(name, color))
+  ipcMain.handle('vault:updateLabel', (_e, id: string, patch: { name: string; color: string }) =>
+    vaultStore.updateLabel(id, patch)
+  )
+  ipcMain.handle('vault:deleteLabel', (_e, id: string) => vaultStore.deleteLabel(id))
+  ipcMain.handle('vault:toggleLoginLabel', (_e, loginId: string, labelId: string) =>
+    vaultStore.toggleLoginLabel(loginId, labelId)
   )
 
   ipcMain.handle('vault:updateLoginPassword', async (_e, id: string, newPassword: string) => {

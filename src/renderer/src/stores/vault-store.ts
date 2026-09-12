@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ApiKeySummary, LoginSummary } from '../../../preload/api-types'
+import type { ApiKeySummary, LoginSummary, LabelSummary } from '../../../preload/api-types'
 
 export type Section = 'keys' | 'logins'
 
@@ -10,6 +10,7 @@ interface VaultUIState {
   search: string
   apiKeys: ApiKeySummary[]
   logins: LoginSummary[]
+  labels: LabelSummary[]
   setUnlocked: (v: boolean) => void
   setHasVault: (v: boolean) => void
   setSection: (s: Section) => void
@@ -24,15 +25,17 @@ export const useVaultStore = create<VaultUIState>((set) => ({
   search: '',
   apiKeys: [],
   logins: [],
+  labels: [],
   setUnlocked: (v) => set({ unlocked: v }),
   setHasVault: (v) => set({ hasVault: v }),
   setSection: (s) => set({ section: s }),
   setSearch: (q) => set({ search: q }),
   refresh: async () => {
-    const [apiKeys, logins] = await Promise.all([
+    const [apiKeys, logins, labels] = await Promise.all([
       window.vaultAPI.listApiKeys(),
-      window.vaultAPI.listLogins()
+      window.vaultAPI.listLogins(),
+      window.vaultAPI.listLabels()
     ])
-    set({ apiKeys, logins })
+    set({ apiKeys, logins, labels })
   }
 }))

@@ -13,6 +13,7 @@ import { EditEntryModal } from './components/EditEntryModal'
 import { SettingsModal } from './components/SettingsModal'
 import { ToastContainer } from './components/ToastContainer'
 import { CommandPalette } from './components/CommandPalette'
+import { LabelManagerModal } from './components/LabelManagerModal'
 
 export interface EditTarget {
   kind: 'key' | 'login'
@@ -28,6 +29,7 @@ export default function App(): JSX.Element {
   const [showAnalysis, setShowAnalysis] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
+  const [showLabelManager, setShowLabelManager] = useState(false)
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null)
 
   useEffect(() => {
@@ -96,6 +98,7 @@ export default function App(): JSX.Element {
               <LoginList
                 onAnalyze={() => setShowAnalysis(true)}
                 onEdit={(id) => setEditTarget({ kind: 'login', id })}
+                onManageLabels={() => setShowLabelManager(true)}
               />
             )}
           </main>
@@ -109,6 +112,7 @@ export default function App(): JSX.Element {
             <EditEntryModal kind={editTarget.kind} id={editTarget.id} onClose={() => setEditTarget(null)} />
           )}
           {showPalette && <CommandPalette onClose={() => setShowPalette(false)} />}
+          {showLabelManager && <LabelManagerModal onClose={() => setShowLabelManager(false)} />}
         </div>
       )}
 

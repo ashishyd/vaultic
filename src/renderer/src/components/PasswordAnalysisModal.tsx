@@ -19,15 +19,23 @@ function formatAge(days: number): string {
   return years >= 1 ? `${years.toFixed(1)}y` : `${days}d`
 }
 
+function textColorFor(hexColor: string): string {
+  const hex = hexColor.replace('#', '')
+  const r = parseInt(hex.slice(0, 2), 16)
+  const g = parseInt(hex.slice(2, 4), 16)
+  const b = parseInt(hex.slice(4, 6), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.6 ? '#0B1220' : '#FFFFFF'
+}
+
 export function PasswordAnalysisModal({ onClose }: PasswordAnalysisModalProps): JSX.Element {
-  const { logins, refresh } = useVaultStore()
+  const { logins, labels, refresh } = useVaultStore()
   const [analysis, setAnalysis] = useState<PasswordAnalysis[]>([])
   const [loadingAnalysis, setLoadingAnalysis] = useState(true)
 
   const [showAiDisclosure, setShowAiDisclosure] = useState(false)
-  const [categorizing, setCategorizing] = useState(false)
-  const [categories, setCategories] = useState<Record<string, string>>({})
-  const [categorizeError, setCategorizeError] = useState<string | null>(null)
+  const [suggestingLabels, setSuggestingLabels] = useState(false)
+  const [suggestError, setSuggestError] = useState<string | null>(null)
   const [usedCli, setUsedCli] = useState<AiCli | null>(null)
 
   const [suggestions, setSuggestions] = useState<Map<string, string>>(new Map())
@@ -46,35 +54,35 @@ export function PasswordAnalysisModal({ onClose }: PasswordAnalysisModalProps): 
     }
   }, [])
 
+  const labelsById = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels])
   const byId = useMemo(() => new Map(analysis.map((a) => [a.id, a])), [analysis])
   const rows = useMemo(
     () => logins.map((l) => ({ login: l, info: byId.get(l.id) })).filter((r) => r.info),
     [logins, byId]
   )
 
-  async function handleConfirmAiCategorize(): Promise<void> {
+  async function handleConfirmAiSuggestLabels(): Promise<void> {
     setShowAiDisclosure(false)
-    setCategorizing(true)
-    setCategorizeError(null)
+    setSuggestingLabels(true)
+    setSuggestError(null)
     try {
       const cliCheck = await window.vaultAPI.checkAiCliAvailable()
       if (!cliCheck) {
-        setCategorizeError('No AI CLI found. Install Claude Code (claude) or Cursor CLI (cursor-agent) to enable this.')
+        setSuggestError('No AI CLI found. Install Claude Code (claude) or Cursor CLI (cursor-agent) to enable this.')
         return
       }
-      const result = await window.vaultAPI.categorizeLoginsWithAi()
+      const result = await window.vaultAPI.suggestLabelsWithAi()
       if (result.success) {
-        setCategories(result.categories)
         setUsedCli(result.cli)
         if (result.failedCount > 0) {
-          setCategorizeError(`Categorized most logins, but ${result.failedCount} failed and were left uncategorized.`)
+          setSuggestError(`Labeled most logins, but ${result.failedCount} failed and were left unlabeled.`)
         }
-        await refresh() // categories are persisted server-side; reflect them in the login list too
+        await refresh() // labels are persisted server-side; reflect them in the login list too
       } else {
-        setCategorizeError(result.error)
+        setSuggestError(result.error)
       }
     } finally {
-      setCategorizing(false)
+      setSuggestingLabels(false)
     }
   }
 
@@ -114,22 +122,22 @@ export function PasswordAnalysisModal({ onClose }: PasswordAnalysisModalProps): 
           <h2 className="text-sm font-semibold">Analyze passwords</h2>
           <button
             onClick={() => setShowAiDisclosure(true)}
-            disabled={categorizing}
+            disabled={suggestingLabels}
             className="rounded-lg border border-vt-teal/40 bg-vt-teal/10 px-3 py-1.5 text-xs font-medium text-vt-teal hover:bg-vt-teal/20 disabled:opacity-50"
           >
-            {categorizing ? 'Categorizing…' : 'Categorize with AI'}
+            {suggestingLabels ? 'Suggesting…' : 'Suggest labels with AI'}
           </button>
         </div>
         <p className="mb-3 text-xs text-vt-muted">
-          Strength and reuse are checked entirely on this device — no data leaves your Mac for that. Categorizing
-          is optional and, if you use it, sends only site names/URLs (never passwords or usernames) to a local AI
-          CLI.
+          Strength and reuse are checked entirely on this device — no data leaves your Mac for that. Label
+          suggestions are optional and, if you use them, send only site names/URLs (never passwords or usernames)
+          to a local AI CLI.
         </p>
 
-        {usedCli && !categorizeError && (
-          <p className="mb-2 text-xs text-vt-muted">Categorized using the {usedCli} CLI.</p>
+        {usedCli && !suggestError && (
+          <p className="mb-2 text-xs text-vt-muted">Suggested using the {usedCli} CLI.</p>
         )}
-        {categorizeError && <p className="mb-2 text-xs text-vt-danger">{categorizeError}</p>}
+        {suggestError && <p className="mb-2 text-xs text-vt-danger">{suggestError}</p>}
 
         {loadingAnalysis ? (
           <p className="text-xs text-vt-muted">Analyzing…</p>
@@ -144,12 +152,20 @@ export function PasswordAnalysisModal({ onClose }: PasswordAnalysisModalProps): 
                     <p className="truncate text-sm font-medium">{login.service}</p>
                     <p className="truncate text-xs text-vt-muted">{login.username}</p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {(login.category ?? categories[login.id]) && (
-                      <span className="rounded-full bg-vt-surface2 px-2 py-0.5 text-[11px] text-vt-muted">
-                        {login.category ?? categories[login.id]}
-                      </span>
-                    )}
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {login.labelIds.map((id) => {
+                      const label = labelsById.get(id)
+                      if (!label) return null
+                      return (
+                        <span
+                          key={id}
+                          style={{ backgroundColor: label.color, color: textColorFor(label.color) }}
+                          className="rounded-full px-2 py-0.5 text-[11px]"
+                        >
+                          {label.name}
+                        </span>
+                      )
+                    })}
                     {info?.reused && (
                       <span className="rounded-full bg-vt-danger/20 px-2 py-0.5 text-[11px] text-vt-danger">
                         Reused
@@ -214,10 +230,10 @@ export function PasswordAnalysisModal({ onClose }: PasswordAnalysisModalProps): 
       {showAiDisclosure && (
         <ConfirmDialog
           title="Send site names to AI?"
-          message="This sends only service names and URLs (never usernames or passwords) to a local AI CLI (Claude Code or Cursor) installed on this Mac, which may contact its provider's cloud API to categorize them. Continue?"
+          message="This sends only service names and URLs (never usernames or passwords) to a local AI CLI (Claude Code or Cursor) installed on this Mac, which may contact its provider's cloud API to suggest labels. Continue?"
           confirmLabel="Continue"
           tone="neutral"
-          onConfirm={handleConfirmAiCategorize}
+          onConfirm={handleConfirmAiSuggestLabels}
           onCancel={() => setShowAiDisclosure(false)}
         />
       )}

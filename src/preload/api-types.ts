@@ -16,7 +16,14 @@ export interface LoginSummary {
   createdAt: number
   updatedAt: number
   favorite: boolean
-  category?: string
+  labelIds: string[]
+}
+
+export interface LabelSummary {
+  id: string
+  name: string
+  color: string
+  createdAt: number
 }
 
 export interface ScannedFile {
@@ -45,8 +52,8 @@ export interface PasswordAnalysis {
 
 export type AiCli = 'claude' | 'cursor-agent'
 
-export type CategorizeResult =
-  | { success: true; categories: Record<string, string>; cli: AiCli; failedCount: number }
+export type SuggestLabelsResult =
+  | { success: true; suggestions: Record<string, string[]>; cli: AiCli; failedCount: number }
   | { success: false; error: string }
 
 export interface AppSettings {
@@ -109,7 +116,7 @@ export interface VaultAPI {
 
   // AI-assisted — sends only {id, service, url} to a local CLI (claude or cursor-agent).
   checkAiCliAvailable: () => Promise<AiCli | null>
-  categorizeLoginsWithAi: () => Promise<CategorizeResult>
+  suggestLabelsWithAi: () => Promise<SuggestLabelsResult>
 
   // Biometric-gated (modifies a stored secret).
   updateLoginPassword: (id: string, newPassword: string) => Promise<boolean>
@@ -123,6 +130,12 @@ export interface VaultAPI {
   ) => Promise<LoginSummary | null>
 
   setLoginFavorite: (id: string, favorite: boolean) => Promise<LoginSummary>
+
+  listLabels: () => Promise<LabelSummary[]>
+  addLabel: (name: string, color?: string) => Promise<LabelSummary>
+  updateLabel: (id: string, patch: { name: string; color: string }) => Promise<LabelSummary>
+  deleteLabel: (id: string) => Promise<void>
+  toggleLoginLabel: (loginId: string, labelId: string) => Promise<LoginSummary>
 
   getSettings: () => Promise<AppSettings>
   setSettings: (settings: AppSettings) => Promise<boolean>
