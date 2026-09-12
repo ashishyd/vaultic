@@ -1,31 +1,25 @@
 import { useEffect, useState } from 'react'
 import { BrandLogo } from './BrandLogo'
 import { useVaultStore } from '../stores/vault-store'
-import { useToastStore } from '../stores/toast-store'
-import { hostnameOf } from '../lib/url'
+import {
+  KeyIcon,
+  LockIcon,
+  ShieldIcon,
+  AlertTriangleIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon
+} from './icons'
 
 interface SidebarProps {
   onLock: () => void
-  onAdd: () => void
-  onScan: () => void
-  onImportLogins: () => void
   onSettings: () => void
-  onOpenSecurityDashboard: () => void
 }
 
-export function Sidebar({
-  onLock,
-  onAdd,
-  onScan,
-  onImportLogins,
-  onSettings,
-  onOpenSecurityDashboard
-}: SidebarProps): JSX.Element {
-  const { section, setSection, search, setSearch, apiKeys, logins } = useVaultStore()
-  const push = useToastStore((s) => s.push)
+export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
+  const { section, setSection, apiKeys, logins } = useVaultStore()
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [weakCount, setWeakCount] = useState(0)
   const [reusedCount, setReusedCount] = useState(0)
-  const [copyingFromChrome, setCopyingFromChrome] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -39,70 +33,51 @@ export function Sidebar({
     }
   }, [logins])
 
-  async function handleCopyForChromeTab(): Promise<void> {
-    setCopyingFromChrome(true)
-    try {
-      const url = await window.vaultAPI.getFrontmostChromeTabUrl()
-      const host = hostnameOf(url ?? undefined)
-      if (!host) {
-        push("Couldn't read Chrome's active tab — is Chrome open?", 'error')
-        return
-      }
-      const match = logins.find((l) => hostnameOf(l.url) === host)
-      if (!match) {
-        push(`No saved login matches ${host}`, 'info')
-        return
-      }
-      const ok = await window.vaultAPI.copyLoginPassword(match.id)
-      push(
-        ok ? `Copied password for "${match.service}"` : 'Touch ID failed or was cancelled',
-        ok ? 'success' : 'error'
-      )
-    } finally {
-      setCopyingFromChrome(false)
-    }
-  }
+  const navItem = (
+    active: boolean,
+    onClick: () => void,
+    icon: JSX.Element,
+    label: string,
+    count?: number
+  ): JSX.Element => (
+    <button
+      onClick={onClick}
+      title={label}
+      className="flex items-center gap-2.5 rounded-lg border-none py-2.5 px-2.5 text-left transition"
+      style={{ background: active ? '#16213A' : 'transparent', color: active ? '#E7ECF7' : '#8B99B8' }}
+    >
+      {icon}
+      {sidebarOpen && (
+        <>
+          <span className="whitespace-nowrap text-sm">{label}</span>
+          {count !== undefined && <span className="ml-auto text-xs text-vt-muted">{count}</span>}
+        </>
+      )}
+    </button>
+  )
 
   return (
-    <div className="flex h-full w-56 shrink-0 flex-col border-r border-vt-border bg-vt-surface px-3 py-4">
-      <div className="mb-5 px-1">
-        <BrandLogo size={26} withWordmark />
+    <div
+      className="flex h-full shrink-0 flex-col border-r border-vt-border bg-vt-surface py-4 transition-[width] duration-150"
+      style={{ width: sidebarOpen ? '210px' : '58px' }}
+    >
+      <div className="mb-2 flex items-center gap-2.5 px-4 pb-4">
+        <BrandLogo size={24} />
+        {sidebarOpen && <span className="whitespace-nowrap text-base font-semibold tracking-tight">Vaultic</span>}
       </div>
 
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search…"
-        className="mb-4 w-full rounded-lg border border-vt-border bg-vt-surface2 px-3 py-1.5 text-sm outline-none focus:border-vt-teal"
-      />
-
-      <nav className="flex flex-col gap-1">
-        <button
-          onClick={() => setSection('keys')}
-          className={`flex items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-            section === 'keys' ? 'bg-vt-surface2 text-vt-text' : 'text-vt-muted hover:bg-vt-surface2'
-          }`}
-        >
-          <span>API Keys</span>
-          <span className="text-xs text-vt-muted">{apiKeys.length}</span>
-        </button>
-        <button
-          onClick={() => setSection('logins')}
-          className={`flex items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-            section === 'logins' ? 'bg-vt-surface2 text-vt-text' : 'text-vt-muted hover:bg-vt-surface2'
-          }`}
-        >
-          <span>Logins</span>
-          <span className="text-xs text-vt-muted">{logins.length}</span>
-        </button>
+      <nav className="flex flex-col gap-0.5 px-2.5">
+        {navItem(section === 'keys', () => setSection('keys'), <KeyIcon />, 'API Keys', apiKeys.length)}
+        {navItem(section === 'logins', () => setSection('logins'), <LockIcon />, 'Logins', logins.length)}
+        {navItem(section === 'analysis', () => setSection('analysis'), <ShieldIcon />, 'Password Health')}
       </nav>
 
-      {(weakCount > 0 || reusedCount > 0) && (
+      {sidebarOpen && (weakCount > 0 || reusedCount > 0) && (
         <button
-          onClick={onOpenSecurityDashboard}
-          className="mt-2 flex items-center gap-1.5 rounded-lg border border-vt-danger/30 bg-vt-danger/10 px-3 py-1.5 text-left text-xs text-vt-danger transition hover:bg-vt-danger/20"
+          onClick={() => setSection('analysis')}
+          className="mx-2.5 mt-3.5 flex items-center gap-2 rounded-lg border border-vt-danger/30 bg-vt-danger/10 px-2.5 py-2 text-left text-xs text-vt-danger"
         >
-          <span>⚠</span>
+          <AlertTriangleIcon size={14} />
           <span>
             {weakCount > 0 && `${weakCount} weak`}
             {weakCount > 0 && reusedCount > 0 && ' · '}
@@ -111,52 +86,33 @@ export function Sidebar({
         </button>
       )}
 
-      <div className="mt-4 flex flex-col gap-2">
+      <div className="mt-auto flex flex-col gap-0.5 px-2.5">
         <button
-          onClick={onAdd}
-          className="rounded-lg bg-vt-teal px-3 py-2 text-sm font-medium text-vt-bg transition hover:brightness-110"
+          onClick={() => setSidebarOpen((v) => !v)}
+          title="Collapse"
+          className="flex items-center gap-2.5 rounded-lg border-none bg-transparent py-2.5 px-2.5 text-left text-vt-muted transition hover:bg-vt-surface2 hover:text-vt-text"
         >
-          + Add {section === 'keys' ? 'API Key' : 'Login'}
+          {sidebarOpen ? <ChevronLeftIcon size={16} /> : <ChevronRightIcon size={16} />}
+          {sidebarOpen && <span className="text-sm">Collapse</span>}
         </button>
-        {section === 'keys' && (
-          <button
-            onClick={onScan}
-            className="rounded-lg border border-vt-border px-3 py-2 text-sm text-vt-text transition hover:bg-vt-surface2"
-          >
-            Scan a folder…
-          </button>
-        )}
-        {section === 'logins' && (
-          <>
-            <button
-              onClick={onImportLogins}
-              className="rounded-lg border border-vt-border px-3 py-2 text-sm text-vt-text transition hover:bg-vt-surface2"
-            >
-              Import from Chrome…
-            </button>
-            <button
-              onClick={handleCopyForChromeTab}
-              disabled={copyingFromChrome}
-              className="rounded-lg border border-vt-border px-3 py-2 text-sm text-vt-text transition hover:bg-vt-surface2 disabled:opacity-50"
-            >
-              {copyingFromChrome ? 'Checking Chrome…' : 'Copy for current Chrome tab'}
-            </button>
-          </>
-        )}
-      </div>
-
-      <div className="mt-auto flex flex-col gap-2 pt-4">
         <button
           onClick={onSettings}
-          className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm text-vt-muted transition hover:bg-vt-surface2 hover:text-vt-text"
+          title="Settings"
+          className="flex items-center gap-2.5 rounded-lg border-none bg-transparent py-2.5 px-2.5 text-left text-vt-muted transition hover:bg-vt-surface2 hover:text-vt-text"
         >
-          Settings
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          {sidebarOpen && <span className="text-sm">Settings</span>}
         </button>
         <button
           onClick={onLock}
-          className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm text-vt-muted transition hover:bg-vt-surface2 hover:text-vt-text"
+          title="Lock Vault"
+          className="flex items-center gap-2.5 rounded-lg border-none bg-transparent py-2.5 px-2.5 text-left text-vt-muted transition hover:bg-vt-surface2 hover:text-vt-text"
         >
-          Lock Vault
+          <LockIcon size={16} />
+          {sidebarOpen && <span className="text-sm">Lock Vault</span>}
         </button>
       </div>
     </div>

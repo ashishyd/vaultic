@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 import { ConfirmDialog } from './ConfirmDialog'
+import { PageHeader } from './PageHeader'
 import { copyWithAutoClear } from '../lib/clipboard'
 import type { PasswordAnalysis, AiCli } from '../../../preload/api-types'
 
-interface PasswordAnalysisModalProps {
-  onClose: () => void
-}
-
 const STRENGTH_STYLES: Record<string, string> = {
-  weak: 'bg-vt-danger/20 text-vt-danger',
-  fair: 'bg-yellow-500/20 text-yellow-400',
-  strong: 'bg-vt-teal/20 text-vt-teal'
+  weak: 'border border-vt-danger text-vt-danger',
+  fair: 'border border-yellow-500 text-yellow-400',
+  strong: 'border border-vt-teal text-vt-teal'
 }
 
 function formatAge(days: number): string {
@@ -19,17 +16,17 @@ function formatAge(days: number): string {
   return years >= 1 ? `${years.toFixed(1)}y` : `${days}d`
 }
 
-function textColorFor(hexColor: string): string {
-  const hex = hexColor.replace('#', '')
-  const r = parseInt(hex.slice(0, 2), 16)
-  const g = parseInt(hex.slice(2, 4), 16)
-  const b = parseInt(hex.slice(4, 6), 16)
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  return luminance > 0.6 ? '#0B1220' : '#FFFFFF'
+function StatCard({ label, value, danger }: { label: string; value: number; danger?: boolean }): JSX.Element {
+  return (
+    <div className="rounded-[10px] border border-vt-border bg-vt-surface p-4">
+      <div className="mb-1.5 text-[11px] uppercase tracking-wide text-vt-muted">{label}</div>
+      <div className={`text-[28px] font-semibold ${danger ? 'text-vt-danger' : ''}`}>{value}</div>
+    </div>
+  )
 }
 
-export function PasswordAnalysisModal({ onClose }: PasswordAnalysisModalProps): JSX.Element {
-  const { logins, labels, refresh } = useVaultStore()
+export function PasswordHealthView(): JSX.Element {
+  const { logins, refresh } = useVaultStore()
   const [analysis, setAnalysis] = useState<PasswordAnalysis[]>([])
   const [loadingAnalysis, setLoadingAnalysis] = useState(true)
 
@@ -54,11 +51,24 @@ export function PasswordAnalysisModal({ onClose }: PasswordAnalysisModalProps): 
     }
   }, [])
 
-  const labelsById = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels])
   const byId = useMemo(() => new Map(analysis.map((a) => [a.id, a])), [analysis])
   const rows = useMemo(
     () => logins.map((l) => ({ login: l, info: byId.get(l.id) })).filter((r) => r.info),
     [logins, byId]
+  )
+  const issueRows = useMemo(
+    () => rows.filter((r) => r.info && (r.info.strength === 'weak' || r.info.reused || r.info.stale)),
+    [rows]
+  )
+
+  const stats = useMemo(
+    () => ({
+      total: rows.length,
+      weak: rows.filter((r) => r.info?.strength === 'weak').length,
+      reused: rows.filter((r) => r.info?.reused).length,
+      stale: rows.filter((r) => r.info?.stale).length
+    }),
+    [rows]
   )
 
   async function handleConfirmAiSuggestLabels(): Promise<void> {
@@ -77,7 +87,7 @@ export function PasswordAnalysisModal({ onClose }: PasswordAnalysisModalProps): 
         if (result.failedCount > 0) {
           setSuggestError(`Labeled most logins, but ${result.failedCount} failed and were left unlabeled.`)
         }
-        await refresh() // labels are persisted server-side; reflect them in the login list too
+        await refresh()
       } else {
         setSuggestError(result.error)
       }
@@ -113,81 +123,79 @@ export function PasswordAnalysisModal({ onClose }: PasswordAnalysisModalProps): 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-1 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Analyze passwords</h2>
+    <div className="flex h-full flex-col">
+      <PageHeader
+        title="Password Health"
+        actions={
           <button
             onClick={() => setShowAiDisclosure(true)}
             disabled={suggestingLabels}
-            className="rounded-lg border border-vt-teal/40 bg-vt-teal/10 px-3 py-1.5 text-xs font-medium text-vt-teal hover:bg-vt-teal/20 disabled:opacity-50"
+            className="rounded-lg border border-vt-teal/40 bg-vt-teal/10 px-3.5 py-2 text-sm font-medium text-vt-teal hover:bg-vt-teal/20 disabled:opacity-50"
           >
             {suggestingLabels ? 'Suggesting…' : 'Suggest labels with AI'}
           </button>
-        </div>
-        <p className="mb-3 text-xs text-vt-muted">
+        }
+      />
+
+      <div className="flex-1 overflow-y-auto px-7 py-6">
+        <p className="mb-4 text-xs text-vt-muted">
           Strength and reuse are checked entirely on this device — no data leaves your Mac for that. Label
           suggestions are optional and, if you use them, send only site names/URLs (never passwords or usernames)
           to a local AI CLI.
         </p>
+        {usedCli && !suggestError && <p className="mb-3 text-xs text-vt-muted">Suggested using the {usedCli} CLI.</p>}
+        {suggestError && <p className="mb-3 text-xs text-vt-danger">{suggestError}</p>}
 
-        {usedCli && !suggestError && (
-          <p className="mb-2 text-xs text-vt-muted">Suggested using the {usedCli} CLI.</p>
-        )}
-        {suggestError && <p className="mb-2 text-xs text-vt-danger">{suggestError}</p>}
+        <div className="mb-6 grid grid-cols-4 gap-3">
+          <StatCard label="Total logins" value={stats.total} />
+          <StatCard label="Weak" value={stats.weak} danger={stats.weak > 0} />
+          <StatCard label="Reused" value={stats.reused} danger={stats.reused > 0} />
+          <StatCard label="Stale (1yr+)" value={stats.stale} />
+        </div>
 
         {loadingAnalysis ? (
           <p className="text-xs text-vt-muted">Analyzing…</p>
-        ) : rows.length === 0 ? (
-          <p className="text-xs text-vt-muted">No logins to analyze yet.</p>
+        ) : issueRows.length === 0 ? (
+          <p className="text-xs text-vt-muted">No issues found — nice and tidy.</p>
         ) : (
-          <div className="flex-1 overflow-y-auto rounded-lg border border-vt-border">
-            {rows.map(({ login, info }) => (
-              <div key={login.id} className="border-b border-vt-border p-3 last:border-b-0">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{login.service}</p>
-                    <p className="truncate text-xs text-vt-muted">{login.username}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {login.labelIds.map((id) => {
-                      const label = labelsById.get(id)
-                      if (!label) return null
-                      return (
-                        <span
-                          key={id}
-                          style={{ backgroundColor: label.color, color: textColorFor(label.color) }}
-                          className="rounded-full px-2 py-0.5 text-[11px]"
-                        >
-                          {label.name}
+          <table className="w-full table-fixed border-collapse">
+            <thead>
+              <tr>
+                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted">
+                  Service
+                </th>
+                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted">
+                  Username
+                </th>
+                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted">
+                  Issue
+                </th>
+                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted" style={{ width: 260 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {issueRows.map(({ login, info }) => (
+                <tr key={login.id}>
+                  <td className="border-b border-vt-border/60 px-3 py-3 font-medium">{login.service}</td>
+                  <td className="border-b border-vt-border/60 px-3 py-3 text-xs text-vt-muted">{login.username}</td>
+                  <td className="border-b border-vt-border/60 px-3 py-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {info?.strength === 'weak' && (
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] ${STRENGTH_STYLES.weak}`}>Weak</span>
+                      )}
+                      {info?.reused && (
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] ${STRENGTH_STYLES.weak}`}>Reused</span>
+                      )}
+                      {info?.stale && (
+                        <span className="rounded-full border border-yellow-500 px-2 py-0.5 text-[11px] text-yellow-400">
+                          {formatAge(info.ageDays)} old
                         </span>
-                      )
-                    })}
-                    {info?.reused && (
-                      <span className="rounded-full bg-vt-danger/20 px-2 py-0.5 text-[11px] text-vt-danger">
-                        Reused
-                      </span>
-                    )}
-                    {info?.stale && (
-                      <span className="rounded-full bg-yellow-500/20 px-2 py-0.5 text-[11px] text-yellow-400">
-                        {formatAge(info.ageDays)} old
-                      </span>
-                    )}
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] capitalize ${STRENGTH_STYLES[info?.strength ?? 'weak']}`}
-                    >
-                      {info?.strength}
-                    </span>
-                  </div>
-                </div>
-
-                {info && (info.strength === 'weak' || info.reused || info.stale) && (
-                  <div className="mt-2 flex items-center gap-2">
+                      )}
+                    </div>
+                  </td>
+                  <td className="border-b border-vt-border/60 px-3 py-3 text-right">
                     {suggestions.has(login.id) ? (
-                      <>
+                      <div className="flex items-center justify-end gap-2">
                         <span className="truncate rounded bg-vt-surface2 px-2 py-1 font-mono text-xs text-vt-teal">
                           {suggestions.get(login.id)}
                         </span>
@@ -202,29 +210,23 @@ export function PasswordAnalysisModal({ onClose }: PasswordAnalysisModalProps): 
                           disabled={savingId === login.id}
                           className="rounded-md bg-vt-teal px-2 py-1 text-xs font-medium text-vt-bg hover:brightness-110 disabled:opacity-50"
                         >
-                          {savingId === login.id ? 'Saving…' : 'Save to this login'}
+                          {savingId === login.id ? 'Saving…' : 'Save'}
                         </button>
-                      </>
+                      </div>
                     ) : (
                       <button
                         onClick={() => handleSuggest(login.id)}
-                        className="rounded-md border border-vt-border px-2 py-1 text-xs text-vt-text hover:bg-vt-surface2"
+                        className="rounded-lg border border-vt-border px-3.5 py-1.5 text-xs text-vt-text hover:bg-vt-surface2"
                       >
-                        Suggest strong password
+                        Generate new
                       </button>
                     )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
-
-        <div className="mt-4 flex justify-end">
-          <button onClick={onClose} className="rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2">
-            Close
-          </button>
-        </div>
       </div>
 
       {showAiDisclosure && (

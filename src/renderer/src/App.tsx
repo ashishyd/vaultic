@@ -5,10 +5,10 @@ import { UnlockScreen } from './components/UnlockScreen'
 import { Sidebar } from './components/Sidebar'
 import { ApiKeyList } from './components/ApiKeyList'
 import { LoginList } from './components/LoginList'
+import { PasswordHealthView } from './components/PasswordHealthView'
 import { AddEntryModal } from './components/AddEntryModal'
 import { ScanImportModal } from './components/ScanImportModal'
 import { ImportLoginsModal } from './components/ImportLoginsModal'
-import { PasswordAnalysisModal } from './components/PasswordAnalysisModal'
 import { EditEntryModal } from './components/EditEntryModal'
 import { SettingsModal } from './components/SettingsModal'
 import { ToastContainer } from './components/ToastContainer'
@@ -21,12 +21,11 @@ export interface EditTarget {
 }
 
 export default function App(): JSX.Element {
-  const { unlocked, hasVault, section, setSection, setUnlocked, setHasVault, refresh } = useVaultStore()
+  const { unlocked, hasVault, section, setUnlocked, setHasVault, refresh } = useVaultStore()
   const push = useToastStore((s) => s.push)
   const [showAdd, setShowAdd] = useState(false)
   const [showScan, setShowScan] = useState(false)
   const [showImportLogins, setShowImportLogins] = useState(false)
-  const [showAnalysis, setShowAnalysis] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [showLabelManager, setShowLabelManager] = useState(false)
@@ -66,11 +65,6 @@ export default function App(): JSX.Element {
     setUnlocked(false)
   }
 
-  function handleOpenSecurityDashboard(): void {
-    setSection('logins')
-    setShowAnalysis(true)
-  }
-
   return (
     <>
       {!unlocked ? (
@@ -83,30 +77,29 @@ export default function App(): JSX.Element {
         />
       ) : (
         <div className="flex h-screen">
-          <Sidebar
-            onLock={handleLock}
-            onAdd={() => setShowAdd(true)}
-            onScan={() => setShowScan(true)}
-            onImportLogins={() => setShowImportLogins(true)}
-            onSettings={() => setShowSettings(true)}
-            onOpenSecurityDashboard={handleOpenSecurityDashboard}
-          />
-          <main className="flex-1 overflow-y-auto p-6">
-            {section === 'keys' ? (
-              <ApiKeyList onEdit={(id) => setEditTarget({ kind: 'key', id })} />
-            ) : (
-              <LoginList
-                onAnalyze={() => setShowAnalysis(true)}
-                onEdit={(id) => setEditTarget({ kind: 'login', id })}
-                onManageLabels={() => setShowLabelManager(true)}
+          <Sidebar onLock={handleLock} onSettings={() => setShowSettings(true)} />
+          <main className="flex-1 overflow-hidden">
+            {section === 'keys' && (
+              <ApiKeyList
+                onEdit={(id) => setEditTarget({ kind: 'key', id })}
+                onAdd={() => setShowAdd(true)}
+                onScan={() => setShowScan(true)}
               />
             )}
+            {section === 'logins' && (
+              <LoginList
+                onEdit={(id) => setEditTarget({ kind: 'login', id })}
+                onManageLabels={() => setShowLabelManager(true)}
+                onAdd={() => setShowAdd(true)}
+                onImportLogins={() => setShowImportLogins(true)}
+              />
+            )}
+            {section === 'analysis' && <PasswordHealthView />}
           </main>
 
           {showAdd && <AddEntryModal section={section} onClose={() => setShowAdd(false)} />}
           {showScan && <ScanImportModal onClose={() => setShowScan(false)} />}
           {showImportLogins && <ImportLoginsModal onClose={() => setShowImportLogins(false)} />}
-          {showAnalysis && <PasswordAnalysisModal onClose={() => setShowAnalysis(false)} />}
           {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
           {editTarget && (
             <EditEntryModal kind={editTarget.kind} id={editTarget.id} onClose={() => setEditTarget(null)} />
