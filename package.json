@@ -4,6 +4,7 @@
   "description": "Vaultic — Your keys, kept. Secure API key and credential manager.",
   "main": "./out/main/index.js",
   "author": "Ashish Yadav",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "postinstall": "electron-builder install-app-deps",

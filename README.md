@@ -58,4 +58,4 @@ scripts/          # build helpers (installs the packaged .app to /Applications)
 
 ## License
 
-No license has been chosen yet for this repository — until one is added, all rights are reserved by the author and the usual "public repo, no license" caveats apply (others may view the code but have no explicit legal permission to reuse it). Add a `LICENSE` file if you want to grant reuse rights.
+MIT — see [LICENSE](LICENSE).
