@@ -1,0 +1,17 @@
+appId: com.vaultic.app
+productName: Vaultic
+directories:
+  buildResources: build
+files:
+  - out/**/*
+  - '!**/.vscode/*'
+mac:
+  category: public.app-category.utilities
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+dmg:
+  artifactName: '${productName}-${version}-${arch}.${ext}'

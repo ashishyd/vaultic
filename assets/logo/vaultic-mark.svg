@@ -1,0 +1,14 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" rx="224" fill="#0F172A"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#vaultic-grad)" fill-opacity="0.35"/>
+  <path d="M512 176L784 288V456C784 608 668 736 512 800C356 736 240 608 240 456V288L512 176Z"
+        stroke="#2DD4BF" stroke-width="34" stroke-linejoin="round"/>
+  <circle cx="512" cy="432" r="88" stroke="#2DD4BF" stroke-width="34"/>
+  <path d="M512 520V620" stroke="#2DD4BF" stroke-width="34" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="vaultic-grad" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2DD4BF"/>
+      <stop offset="1" stop-color="#0F172A" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+</svg>
