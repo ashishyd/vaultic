@@ -46,7 +46,7 @@ export interface PasswordAnalysis {
 export type AiCli = 'claude' | 'cursor-agent'
 
 export type CategorizeResult =
-  | { success: true; categories: Record<string, string>; cli: AiCli }
+  | { success: true; categories: Record<string, string>; cli: AiCli; failedCount: number }
   | { success: false; error: string }
 
 export interface AppSettings {

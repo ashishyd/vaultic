@@ -66,6 +66,9 @@ export function PasswordAnalysisModal({ onClose }: PasswordAnalysisModalProps): 
       if (result.success) {
         setCategories(result.categories)
         setUsedCli(result.cli)
+        if (result.failedCount > 0) {
+          setCategorizeError(`Categorized most logins, but ${result.failedCount} failed and were left uncategorized.`)
+        }
         await refresh() // categories are persisted server-side; reflect them in the login list too
       } else {
         setCategorizeError(result.error)

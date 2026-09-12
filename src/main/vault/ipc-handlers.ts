@@ -203,10 +203,10 @@ export function registerVaultIpcHandlers(): void {
     const items = vaultStore.getLoginsMetadata()
     if (items.length === 0) return { success: false as const, error: 'No logins to categorize.' }
     try {
-      const { categories, cli } = await categorizeWithAi(items)
+      const { categories, cli, failedCount } = await categorizeWithAi(items)
       // Persist so the categories survive without recomputing on every open.
       await vaultStore.setLoginCategories(Object.entries(categories).map(([id, category]) => ({ id, category })))
-      return { success: true as const, categories, cli }
+      return { success: true as const, categories, cli, failedCount }
     } catch (err) {
       return { success: false as const, error: err instanceof Error ? err.message : 'AI categorization failed.' }
     }
