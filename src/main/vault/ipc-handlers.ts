@@ -2,7 +2,7 @@ import { ipcMain, clipboard, dialog, BrowserWindow } from 'electron'
 import { unlink, writeFile } from 'fs/promises'
 import { vaultStore } from './vault-store'
 import { cacheKey, readCachedKey } from './keychain'
-import { scanForEnvFiles } from './scanner'
+import { scanForEnvFiles, scanForRecoveryCodes, parseRecoveryCodesFile } from './scanner'
 import { isBiometricsAvailable, biometricGate } from './biometric'
 import { parseLoginsCsvFile, loginsToCsv } from './csv'
 import { analyzeLogins, generateStrongPassword } from './password-strength'
@@ -67,6 +67,7 @@ export function registerVaultIpcHandlers(): void {
 
   ipcMain.handle('vault:listApiKeys', () => vaultStore.listApiKeys())
   ipcMain.handle('vault:listLogins', () => vaultStore.listLogins())
+  ipcMain.handle('vault:listRecoveryCodes', () => vaultStore.listRecoveryCodes())
 
   ipcMain.handle(
     'vault:addApiKey',
@@ -92,11 +93,24 @@ export function registerVaultIpcHandlers(): void {
       vaultStore.addLogins(entries)
   )
 
+  ipcMain.handle(
+    'vault:addRecoveryCode',
+    (_e, entry: { service: string; codes: string[]; notes?: string }) => vaultStore.addRecoveryCode(entry)
+  )
+
+  ipcMain.handle(
+    'vault:addRecoveryCodesBatch',
+    (_e, entries: Array<{ service: string; codes: string[]; notes?: string }>) =>
+      vaultStore.addRecoveryCodesBatch(entries)
+  )
+
   // Soft-delete — supports the Undo action shown in the toast after a delete.
   ipcMain.handle('vault:deleteApiKey', (_e, id: string) => vaultStore.deleteApiKey(id))
   ipcMain.handle('vault:deleteLogin', (_e, id: string) => vaultStore.deleteLogin(id))
+  ipcMain.handle('vault:deleteRecoveryCode', (_e, id: string) => vaultStore.deleteRecoveryCode(id))
   ipcMain.handle('vault:restoreApiKey', (_e, id: string) => vaultStore.restoreApiKey(id))
   ipcMain.handle('vault:restoreLogin', (_e, id: string) => vaultStore.restoreLogin(id))
+  ipcMain.handle('vault:restoreRecoveryCode', (_e, id: string) => vaultStore.restoreRecoveryCode(id))
 
   ipcMain.handle('vault:revealApiKeyValue', async (_e, id: string) => {
     const ok = await biometricGate('view this API key value')
@@ -128,6 +142,19 @@ export function registerVaultIpcHandlers(): void {
     return true
   })
 
+  ipcMain.handle('vault:revealRecoveryCodes', async (_e, id: string) => {
+    const ok = await biometricGate('view these recovery codes')
+    if (!ok) return null
+    return vaultStore.getRecoveryCodes(id)
+  })
+
+  ipcMain.handle('vault:copyRecoveryCode', async (_e, code: string) => {
+    const ok = await biometricGate('copy this recovery code')
+    if (!ok) return false
+    copyWithAutoClear(code)
+    return true
+  })
+
   ipcMain.handle('vault:copyToClipboard', (_e, value: string) => {
     copyWithAutoClear(value)
     return true
@@ -147,6 +174,38 @@ export function registerVaultIpcHandlers(): void {
   })
 
   ipcMain.handle('vault:scanFolder', async (_e, folderPath: string) => scanForEnvFiles(folderPath))
+  ipcMain.handle('vault:scanFolderForRecoveryCodes', async (_e, folderPath: string) =>
+    scanForRecoveryCodes(folderPath)
+  )
+
+  ipcMain.handle('vault:pickRecoveryCodesFile', async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    const options: Electron.OpenDialogOptions = {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Text/CSV/PDF', extensions: ['txt', 'csv', 'md', 'pdf'] },
+        { name: 'All files', extensions: ['*'] }
+      ],
+      title: 'Choose a recovery/backup codes file'
+    }
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('vault:parseRecoveryCodesFile', async (_e, filePath: string) => {
+    try {
+      const parsed = await parseRecoveryCodesFile(filePath)
+      return { success: true as const, ...parsed }
+    } catch (err) {
+      return {
+        success: false as const,
+        error: err instanceof Error ? err.message : 'Could not read that file.'
+      }
+    }
+  })
 
   ipcMain.handle('vault:pickCsvFile', async () => {
     const win = BrowserWindow.getFocusedWindow()
@@ -255,6 +314,15 @@ export function registerVaultIpcHandlers(): void {
       const ok = await biometricGate('edit this login')
       if (!ok) return null
       return vaultStore.updateLogin(id, patch)
+    }
+  )
+
+  ipcMain.handle(
+    'vault:updateRecoveryCode',
+    async (_e, id: string, patch: { service: string; codes: string[]; notes?: string }) => {
+      const ok = await biometricGate('edit these recovery codes')
+      if (!ok) return null
+      return vaultStore.updateRecoveryCode(id, patch)
     }
   )
 

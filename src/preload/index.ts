@@ -12,27 +12,39 @@ const vaultAPI: VaultAPI = {
 
   listApiKeys: () => ipcRenderer.invoke('vault:listApiKeys'),
   listLogins: () => ipcRenderer.invoke('vault:listLogins'),
+  listRecoveryCodes: () => ipcRenderer.invoke('vault:listRecoveryCodes'),
 
   addApiKey: (entry) => ipcRenderer.invoke('vault:addApiKey', entry),
   addApiKeys: (entries) => ipcRenderer.invoke('vault:addApiKeys', entries),
   addLogin: (entry) => ipcRenderer.invoke('vault:addLogin', entry),
   addLogins: (entries) => ipcRenderer.invoke('vault:addLogins', entries),
+  addRecoveryCode: (entry) => ipcRenderer.invoke('vault:addRecoveryCode', entry),
+  addRecoveryCodesBatch: (entries) => ipcRenderer.invoke('vault:addRecoveryCodesBatch', entries),
 
   deleteApiKey: (id) => ipcRenderer.invoke('vault:deleteApiKey', id),
   deleteLogin: (id) => ipcRenderer.invoke('vault:deleteLogin', id),
+  deleteRecoveryCode: (id) => ipcRenderer.invoke('vault:deleteRecoveryCode', id),
   restoreApiKey: (id) => ipcRenderer.invoke('vault:restoreApiKey', id),
   restoreLogin: (id) => ipcRenderer.invoke('vault:restoreLogin', id),
+  restoreRecoveryCode: (id) => ipcRenderer.invoke('vault:restoreRecoveryCode', id),
 
   revealApiKeyValue: (id) => ipcRenderer.invoke('vault:revealApiKeyValue', id),
   revealLoginPassword: (id) => ipcRenderer.invoke('vault:revealLoginPassword', id),
+  revealRecoveryCodes: (id) => ipcRenderer.invoke('vault:revealRecoveryCodes', id),
   copyApiKeyValue: (id) => ipcRenderer.invoke('vault:copyApiKeyValue', id),
   copyLoginPassword: (id) => ipcRenderer.invoke('vault:copyLoginPassword', id),
+  copyRecoveryCode: (code) => ipcRenderer.invoke('vault:copyRecoveryCode', code),
   exportLoginsCsv: (ids) => ipcRenderer.invoke('vault:exportLoginsCsv', ids),
 
   copyToClipboard: (value) => ipcRenderer.invoke('vault:copyToClipboard', value),
 
   pickFolder: () => ipcRenderer.invoke('vault:pickFolder'),
   scanFolder: (folderPath) => ipcRenderer.invoke('vault:scanFolder', folderPath),
+  scanFolderForRecoveryCodes: (folderPath) =>
+    ipcRenderer.invoke('vault:scanFolderForRecoveryCodes', folderPath),
+
+  pickRecoveryCodesFile: () => ipcRenderer.invoke('vault:pickRecoveryCodesFile'),
+  parseRecoveryCodesFile: (filePath) => ipcRenderer.invoke('vault:parseRecoveryCodesFile', filePath),
 
   pickCsvFile: () => ipcRenderer.invoke('vault:pickCsvFile'),
   parseLoginsCsv: (filePath) => ipcRenderer.invoke('vault:parseLoginsCsv', filePath),
@@ -47,6 +59,7 @@ const vaultAPI: VaultAPI = {
   updateLoginPassword: (id, newPassword) => ipcRenderer.invoke('vault:updateLoginPassword', id, newPassword),
   updateApiKey: (id, patch) => ipcRenderer.invoke('vault:updateApiKey', id, patch),
   updateLogin: (id, patch) => ipcRenderer.invoke('vault:updateLogin', id, patch),
+  updateRecoveryCode: (id, patch) => ipcRenderer.invoke('vault:updateRecoveryCode', id, patch),
 
   setLoginFavorite: (id, favorite) => ipcRenderer.invoke('vault:setLoginFavorite', id, favorite),
 

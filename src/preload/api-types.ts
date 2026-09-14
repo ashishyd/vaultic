@@ -26,11 +26,30 @@ export interface LabelSummary {
   createdAt: number
 }
 
+export interface RecoveryCodeSummary {
+  id: string
+  service: string
+  codeCount: number
+  notes?: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface ScannedFile {
   project: string
   filePath: string
   keys: Array<{ name: string; value: string }>
 }
+
+export interface ScannedRecoveryCodes {
+  service: string
+  filePath: string
+  codes: string[]
+}
+
+export type ParseRecoveryCodesFileResult =
+  | { success: true; service: string; codes: string[] }
+  | { success: false; error: string }
 
 export interface CsvLoginRow {
   service: string
@@ -72,6 +91,7 @@ export interface VaultAPI {
 
   listApiKeys: () => Promise<ApiKeySummary[]>
   listLogins: () => Promise<LoginSummary[]>
+  listRecoveryCodes: () => Promise<RecoveryCodeSummary[]>
 
   addApiKey: (entry: { project: string; name: string; value: string; notes?: string }) => Promise<ApiKeySummary>
   addApiKeys: (
@@ -87,17 +107,25 @@ export interface VaultAPI {
   addLogins: (
     entries: Array<{ service: string; username: string; password: string; url?: string; notes?: string }>
   ) => Promise<LoginSummary[]>
+  addRecoveryCode: (entry: { service: string; codes: string[]; notes?: string }) => Promise<RecoveryCodeSummary>
+  addRecoveryCodesBatch: (
+    entries: Array<{ service: string; codes: string[]; notes?: string }>
+  ) => Promise<RecoveryCodeSummary[]>
 
   deleteApiKey: (id: string) => Promise<void>
   deleteLogin: (id: string) => Promise<void>
+  deleteRecoveryCode: (id: string) => Promise<void>
   restoreApiKey: (id: string) => Promise<void>
   restoreLogin: (id: string) => Promise<void>
+  restoreRecoveryCode: (id: string) => Promise<void>
 
   // Biometric-gated (falls back to allowed-through when no Touch ID is available).
   revealApiKeyValue: (id: string) => Promise<string | null>
   revealLoginPassword: (id: string) => Promise<string | null>
+  revealRecoveryCodes: (id: string) => Promise<string[] | null>
   copyApiKeyValue: (id: string) => Promise<boolean>
   copyLoginPassword: (id: string) => Promise<boolean>
+  copyRecoveryCode: (code: string) => Promise<boolean>
   exportLoginsCsv: (ids: string[]) => Promise<{ success: boolean; filePath?: string }>
 
   // Not gated — these aren't secrets.
@@ -105,6 +133,10 @@ export interface VaultAPI {
 
   pickFolder: () => Promise<string | null>
   scanFolder: (folderPath: string) => Promise<ScannedFile[]>
+  scanFolderForRecoveryCodes: (folderPath: string) => Promise<ScannedRecoveryCodes[]>
+
+  pickRecoveryCodesFile: () => Promise<string | null>
+  parseRecoveryCodesFile: (filePath: string) => Promise<ParseRecoveryCodesFileResult>
 
   pickCsvFile: () => Promise<string | null>
   parseLoginsCsv: (filePath: string) => Promise<CsvLoginRow[]>
@@ -128,6 +160,10 @@ export interface VaultAPI {
     id: string,
     patch: { service: string; username: string; password: string; url?: string; notes?: string }
   ) => Promise<LoginSummary | null>
+  updateRecoveryCode: (
+    id: string,
+    patch: { service: string; codes: string[]; notes?: string }
+  ) => Promise<RecoveryCodeSummary | null>
 
   setLoginFavorite: (id: string, favorite: boolean) => Promise<LoginSummary>
 

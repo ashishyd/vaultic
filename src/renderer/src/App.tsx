@@ -6,8 +6,11 @@ import { Sidebar } from './components/Sidebar'
 import { ApiKeyList } from './components/ApiKeyList'
 import { LoginList } from './components/LoginList'
 import { PasswordHealthView } from './components/PasswordHealthView'
+import { RecoveryCodesView } from './components/RecoveryCodesView'
 import { AddEntryModal } from './components/AddEntryModal'
 import { ScanImportModal } from './components/ScanImportModal'
+import { ScanRecoveryCodesModal } from './components/ScanRecoveryCodesModal'
+import { RecoveryCodesFormModal } from './components/RecoveryCodesFormModal'
 import { ImportLoginsModal } from './components/ImportLoginsModal'
 import { EditEntryModal } from './components/EditEntryModal'
 import { SettingsModal } from './components/SettingsModal'
@@ -30,6 +33,9 @@ export default function App(): JSX.Element {
   const [showPalette, setShowPalette] = useState(false)
   const [showLabelManager, setShowLabelManager] = useState(false)
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null)
+  const [showAddRecoveryCodes, setShowAddRecoveryCodes] = useState(false)
+  const [showScanRecoveryCodes, setShowScanRecoveryCodes] = useState(false)
+  const [editRecoveryCodesId, setEditRecoveryCodesId] = useState<string | null>(null)
 
   useEffect(() => {
     window.vaultAPI.hasVault().then(setHasVault)
@@ -94,6 +100,13 @@ export default function App(): JSX.Element {
                 onImportLogins={() => setShowImportLogins(true)}
               />
             )}
+            {section === 'recovery' && (
+              <RecoveryCodesView
+                onEdit={(id) => setEditRecoveryCodesId(id)}
+                onAdd={() => setShowAddRecoveryCodes(true)}
+                onScan={() => setShowScanRecoveryCodes(true)}
+              />
+            )}
             {section === 'analysis' && <PasswordHealthView />}
           </main>
 
@@ -106,6 +119,15 @@ export default function App(): JSX.Element {
           )}
           {showPalette && <CommandPalette onClose={() => setShowPalette(false)} />}
           {showLabelManager && <LabelManagerModal onClose={() => setShowLabelManager(false)} />}
+          {showAddRecoveryCodes && (
+            <RecoveryCodesFormModal onClose={() => setShowAddRecoveryCodes(false)} />
+          )}
+          {showScanRecoveryCodes && (
+            <ScanRecoveryCodesModal onClose={() => setShowScanRecoveryCodes(false)} />
+          )}
+          {editRecoveryCodesId && (
+            <RecoveryCodesFormModal id={editRecoveryCodesId} onClose={() => setEditRecoveryCodesId(null)} />
+          )}
         </div>
       )}
 

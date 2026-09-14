@@ -17,6 +17,13 @@ interface LoginListProps {
 
 const PAGE_SIZE = 50
 
+type LoginTab = 'accounts' | 'files'
+
+/** File/archive passwords are saved with no username (see the bulk "Name: password" format). */
+function isFilePassword(username: string): boolean {
+  return !username.trim()
+}
+
 /** Picks readable black/white text for an arbitrary label background color. */
 function textColorFor(hexColor: string): string {
   const hex = hexColor.replace('#', '')
@@ -40,25 +47,29 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
   const [activeLabelFilters, setActiveLabelFilters] = useState<Set<string>>(new Set())
   const [editingLabelsFor, setEditingLabelsFor] = useState<string | null>(null)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [activeTab, setActiveTab] = useState<LoginTab>('accounts')
 
   const labelsById = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels])
+
+  const filePasswordCount = useMemo(() => logins.filter((l) => isFilePassword(l.username)).length, [logins])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return logins
+      .filter((l) => isFilePassword(l.username) === (activeTab === 'files'))
       .filter((l) => !q || l.service.toLowerCase().includes(q) || l.username.toLowerCase().includes(q))
       .filter((l) => activeLabelFilters.size === 0 || l.labelIds.some((id) => activeLabelFilters.has(id)))
       .sort((a, b) => {
         if (a.favorite !== b.favorite) return a.favorite ? -1 : 1
         return a.service.localeCompare(b.service)
       })
-  }, [logins, search, activeLabelFilters])
+  }, [logins, search, activeLabelFilters, activeTab])
 
   // Reset pagination whenever the effective filter/search changes so a new,
   // narrower result set isn't hidden behind a stale "Load more" cutoff.
   useEffect(() => {
     setVisibleCount(PAGE_SIZE)
-  }, [search, activeLabelFilters])
+  }, [search, activeLabelFilters, activeTab])
 
   const visible = filtered.slice(0, visibleCount)
   const remaining = filtered.length - visible.length
@@ -215,6 +226,21 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
       />
 
       <div className="flex-1 overflow-y-auto px-7 py-6">
+        <div className="mb-4 flex gap-1 rounded-lg bg-vt-surface2 p-1 text-xs" style={{ width: 'fit-content' }}>
+          <button
+            onClick={() => setActiveTab('accounts')}
+            className={`rounded-md px-3 py-1.5 ${activeTab === 'accounts' ? 'bg-vt-teal text-vt-bg' : 'text-vt-muted'}`}
+          >
+            Logins
+          </button>
+          <button
+            onClick={() => setActiveTab('files')}
+            className={`rounded-md px-3 py-1.5 ${activeTab === 'files' ? 'bg-vt-teal text-vt-bg' : 'text-vt-muted'}`}
+          >
+            File Passwords{filePasswordCount > 0 ? ` (${filePasswordCount})` : ''}
+          </button>
+        </div>
+
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {labels.map((label) => {
             const active = activeLabelFilters.has(label.id)
@@ -260,6 +286,19 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
             <p className="text-sm">No logins saved yet.</p>
             <p className="text-xs">Add a site or account to get started.</p>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center text-vt-muted">
+            {activeTab === 'files' ? (
+              <>
+                <p className="text-sm">No file passwords yet.</p>
+                <p className="text-xs">
+                  Add one with the "Name: password" bulk-paste format (no username) to see it here.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm">No logins match your filters.</p>
+            )}
+          </div>
         ) : (
           <table className="w-full table-fixed border-collapse">
             <thead>
@@ -268,9 +307,11 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
                 <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted" style={{ width: '22%' }}>
                   Service
                 </th>
-                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted" style={{ width: '20%' }}>
-                  Username
-                </th>
+                {activeTab === 'accounts' && (
+                  <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted" style={{ width: '20%' }}>
+                    Username
+                  </th>
+                )}
                 <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted">
                   Password
                 </th>
@@ -296,7 +337,9 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
                       )}
                     </td>
                     <td className="truncate border-b border-vt-border/60 px-3 py-3 font-medium">{login.service}</td>
-                    <td className="truncate border-b border-vt-border/60 px-3 py-3 text-xs text-vt-muted">{login.username}</td>
+                    {activeTab === 'accounts' && (
+                      <td className="truncate border-b border-vt-border/60 px-3 py-3 text-xs text-vt-muted">{login.username}</td>
+                    )}
                     <td className="border-b border-vt-border/60 px-3 py-3">
                       <span className="font-mono text-xs text-vt-muted">
                         {revealed.get(login.id) ?? '••••••••••••'}
@@ -330,9 +373,11 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
                     <td className="border-b border-vt-border/60 px-3 py-3 text-right">
                       {!selectMode && (
                         <div className="inline-flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                          <IconButton onClick={() => handleCopyUsername(login.username)} title="Copy username">
-                            <UserIcon size={14} />
-                          </IconButton>
+                          {activeTab === 'accounts' && (
+                            <IconButton onClick={() => handleCopyUsername(login.username)} title="Copy username">
+                              <UserIcon size={14} />
+                            </IconButton>
+                          )}
                           <IconButton onClick={() => handleCopyPassword(login.id)} title="Copy password" tone="teal">
                             <CopyIcon size={14} />
                           </IconButton>
@@ -351,7 +396,7 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
                   </tr>
                   {editingLabelsFor === login.id && (
                     <tr>
-                      <td colSpan={6} className="border-b border-vt-border/60 bg-vt-surface2/40 px-3 py-2">
+                      <td colSpan={activeTab === 'accounts' ? 6 : 5} className="border-b border-vt-border/60 bg-vt-surface2/40 px-3 py-2">
                         <div className="flex flex-wrap gap-1.5">
                           {labels.length === 0 ? (
                             <p className="text-[11px] text-vt-muted">

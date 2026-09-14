@@ -47,6 +47,16 @@ interface LabelRecord {
   createdAt: number
 }
 
+interface RecoveryCodeRecord {
+  id: string
+  service: string
+  codes: string[]
+  notes?: string
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+}
+
 export interface LabelSummary {
   id: string
   name: string
@@ -91,6 +101,15 @@ export interface LoginSummary {
   labelIds: string[]
 }
 
+export interface RecoveryCodeSummary {
+  id: string
+  service: string
+  codeCount: number
+  notes?: string
+  createdAt: number
+  updatedAt: number
+}
+
 function toApiKeySummary(r: ApiKeyRecord): ApiKeySummary {
   return {
     id: r.id,
@@ -120,13 +139,25 @@ function toLabelSummary(r: LabelRecord): LabelSummary {
   return { id: r.id, name: r.name, color: r.color, createdAt: r.createdAt }
 }
 
+function toRecoveryCodeSummary(r: RecoveryCodeRecord): RecoveryCodeSummary {
+  return {
+    id: r.id,
+    service: r.service,
+    codeCount: r.codes.length,
+    notes: r.notes,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt ?? r.createdAt
+  }
+}
+
 interface VaultData {
   apiKeys: ApiKeyRecord[]
   logins: LoginRecord[]
   labels: LabelRecord[]
+  recoveryCodes: RecoveryCodeRecord[]
 }
 
-const EMPTY_VAULT: VaultData = { apiKeys: [], logins: [], labels: [] }
+const EMPTY_VAULT: VaultData = { apiKeys: [], logins: [], labels: [], recoveryCodes: [] }
 
 function vaultPath(): string {
   return join(app.getPath('userData'), 'vault.enc')
@@ -165,6 +196,7 @@ class VaultStore {
     const { plaintext, key } = await decryptVault(encrypted, masterPassword)
     const data: VaultData = JSON.parse(plaintext)
     if (!data.labels) data.labels = [] // vaults created before labels existed
+    if (!data.recoveryCodes) data.recoveryCodes = [] // vaults created before recovery codes existed
     this.data = data
     this.key = key
     this.salt = Buffer.from(encrypted.salt, 'hex')
@@ -178,6 +210,7 @@ class VaultStore {
     const plaintext = decryptWithKey(encrypted, key)
     const data: VaultData = JSON.parse(plaintext)
     if (!data.labels) data.labels = [] // vaults created before labels existed
+    if (!data.recoveryCodes) data.recoveryCodes = [] // vaults created before recovery codes existed
     this.data = data
     this.key = key
     this.salt = Buffer.from(encrypted.salt, 'hex')
@@ -248,10 +281,11 @@ class VaultStore {
   private async purgeOldTrash(): Promise<void> {
     const data = this.ensureUnlocked()
     const cutoff = Date.now() - TRASH_RETENTION_MS
-    const before = data.apiKeys.length + data.logins.length
+    const before = data.apiKeys.length + data.logins.length + data.recoveryCodes.length
     data.apiKeys = data.apiKeys.filter((k) => !k.deletedAt || k.deletedAt > cutoff)
     data.logins = data.logins.filter((l) => !l.deletedAt || l.deletedAt > cutoff)
-    if (data.apiKeys.length + data.logins.length !== before) {
+    data.recoveryCodes = data.recoveryCodes.filter((r) => !r.deletedAt || r.deletedAt > cutoff)
+    if (data.apiKeys.length + data.logins.length + data.recoveryCodes.length !== before) {
       await this.persist()
     }
   }
@@ -268,6 +302,12 @@ class VaultStore {
       .map(toLoginSummary)
   }
 
+  listRecoveryCodes(): RecoveryCodeSummary[] {
+    return this.ensureUnlocked()
+      .recoveryCodes.filter((r) => !r.deletedAt)
+      .map(toRecoveryCodeSummary)
+  }
+
   /** Biometric-gated in ipc-handlers before this is called. */
   getApiKeyValue(id: string): string | null {
     const data = this.ensureUnlocked()
@@ -278,6 +318,12 @@ class VaultStore {
   getLoginPassword(id: string): string | null {
     const data = this.ensureUnlocked()
     return data.logins.find((l) => l.id === id)?.password ?? null
+  }
+
+  /** Biometric-gated in ipc-handlers before this is called. */
+  getRecoveryCodes(id: string): string[] | null {
+    const data = this.ensureUnlocked()
+    return data.recoveryCodes.find((r) => r.id === id)?.codes ?? null
   }
 
   /** Biometric-gated in ipc-handlers before this is called (used for bulk export). */
@@ -327,6 +373,28 @@ class VaultStore {
     return full.map(toLoginSummary)
   }
 
+  async addRecoveryCode(
+    entry: Omit<RecoveryCodeRecord, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<RecoveryCodeSummary> {
+    const data = this.ensureUnlocked()
+    const now = Date.now()
+    const full: RecoveryCodeRecord = { ...entry, id: randomUUID(), createdAt: now, updatedAt: now }
+    data.recoveryCodes.push(full)
+    await this.persist()
+    return toRecoveryCodeSummary(full)
+  }
+
+  async addRecoveryCodesBatch(
+    entries: Array<Omit<RecoveryCodeRecord, 'id' | 'createdAt' | 'updatedAt'>>
+  ): Promise<RecoveryCodeSummary[]> {
+    const data = this.ensureUnlocked()
+    const now = Date.now()
+    const full = entries.map((e) => ({ ...e, id: randomUUID(), createdAt: now, updatedAt: now }))
+    data.recoveryCodes.push(...full)
+    await this.persist()
+    return full.map(toRecoveryCodeSummary)
+  }
+
   /** Soft-delete — kept in storage so it can be restored (undo), swept after 30 days. */
   async deleteApiKey(id: string): Promise<void> {
     const data = this.ensureUnlocked()
@@ -354,6 +422,21 @@ class VaultStore {
     const data = this.ensureUnlocked()
     const login = data.logins.find((l) => l.id === id)
     if (login) login.deletedAt = undefined
+    await this.persist()
+  }
+
+  /** Soft-delete — kept in storage so it can be restored (undo), swept after 30 days. */
+  async deleteRecoveryCode(id: string): Promise<void> {
+    const data = this.ensureUnlocked()
+    const entry = data.recoveryCodes.find((r) => r.id === id)
+    if (entry) entry.deletedAt = Date.now()
+    await this.persist()
+  }
+
+  async restoreRecoveryCode(id: string): Promise<void> {
+    const data = this.ensureUnlocked()
+    const entry = data.recoveryCodes.find((r) => r.id === id)
+    if (entry) entry.deletedAt = undefined
     await this.persist()
   }
 
@@ -418,6 +501,22 @@ class VaultStore {
     login.updatedAt = Date.now()
     await this.persist()
     return toLoginSummary(login)
+  }
+
+  /** Biometric-gated in ipc-handlers before this is called (edit flow needs the current codes prefilled). */
+  async updateRecoveryCode(
+    id: string,
+    patch: { service: string; codes: string[]; notes?: string }
+  ): Promise<RecoveryCodeSummary> {
+    const data = this.ensureUnlocked()
+    const entry = data.recoveryCodes.find((r) => r.id === id)
+    if (!entry) throw new Error('Recovery codes not found')
+    entry.service = patch.service
+    entry.codes = patch.codes
+    entry.notes = patch.notes
+    entry.updatedAt = Date.now()
+    await this.persist()
+    return toRecoveryCodeSummary(entry)
   }
 
   async setLoginFavorite(id: string, favorite: boolean): Promise<LoginSummary> {

@@ -133,6 +133,19 @@ export function TrashIcon(props: IconProps): JSX.Element {
   )
 }
 
+export function LifeBuoyIcon(props: IconProps): JSX.Element {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="m4.93 4.93 4.24 4.24" />
+      <path d="m14.83 14.83 4.24 4.24" />
+      <path d="m14.83 9.17 4.24-4.24" />
+      <path d="m4.93 19.07 4.24-4.24" />
+    </Svg>
+  )
+}
+
 export function UserIcon(props: IconProps): JSX.Element {
   return (
     <Svg {...props}>
