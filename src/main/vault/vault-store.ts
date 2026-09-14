@@ -57,6 +57,15 @@ interface RecoveryCodeRecord {
   deletedAt?: number
 }
 
+interface SecureNoteRecord {
+  id: string
+  title: string
+  content: string
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+}
+
 export interface LabelSummary {
   id: string
   name: string
@@ -110,6 +119,14 @@ export interface RecoveryCodeSummary {
   updatedAt: number
 }
 
+export interface SecureNoteSummary {
+  id: string
+  title: string
+  contentLength: number
+  createdAt: number
+  updatedAt: number
+}
+
 function toApiKeySummary(r: ApiKeyRecord): ApiKeySummary {
   return {
     id: r.id,
@@ -150,14 +167,31 @@ function toRecoveryCodeSummary(r: RecoveryCodeRecord): RecoveryCodeSummary {
   }
 }
 
+function toSecureNoteSummary(r: SecureNoteRecord): SecureNoteSummary {
+  return {
+    id: r.id,
+    title: r.title,
+    contentLength: r.content.length,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt ?? r.createdAt
+  }
+}
+
 interface VaultData {
   apiKeys: ApiKeyRecord[]
   logins: LoginRecord[]
   labels: LabelRecord[]
   recoveryCodes: RecoveryCodeRecord[]
+  secureNotes: SecureNoteRecord[]
 }
 
-const EMPTY_VAULT: VaultData = { apiKeys: [], logins: [], labels: [], recoveryCodes: [] }
+const EMPTY_VAULT: VaultData = {
+  apiKeys: [],
+  logins: [],
+  labels: [],
+  recoveryCodes: [],
+  secureNotes: []
+}
 
 function vaultPath(): string {
   return join(app.getPath('userData'), 'vault.enc')
@@ -197,6 +231,7 @@ class VaultStore {
     const data: VaultData = JSON.parse(plaintext)
     if (!data.labels) data.labels = [] // vaults created before labels existed
     if (!data.recoveryCodes) data.recoveryCodes = [] // vaults created before recovery codes existed
+    if (!data.secureNotes) data.secureNotes = [] // vaults created before secure notes existed
     this.data = data
     this.key = key
     this.salt = Buffer.from(encrypted.salt, 'hex')
@@ -211,6 +246,7 @@ class VaultStore {
     const data: VaultData = JSON.parse(plaintext)
     if (!data.labels) data.labels = [] // vaults created before labels existed
     if (!data.recoveryCodes) data.recoveryCodes = [] // vaults created before recovery codes existed
+    if (!data.secureNotes) data.secureNotes = [] // vaults created before secure notes existed
     this.data = data
     this.key = key
     this.salt = Buffer.from(encrypted.salt, 'hex')
@@ -281,11 +317,13 @@ class VaultStore {
   private async purgeOldTrash(): Promise<void> {
     const data = this.ensureUnlocked()
     const cutoff = Date.now() - TRASH_RETENTION_MS
-    const before = data.apiKeys.length + data.logins.length + data.recoveryCodes.length
+    const before =
+      data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length
     data.apiKeys = data.apiKeys.filter((k) => !k.deletedAt || k.deletedAt > cutoff)
     data.logins = data.logins.filter((l) => !l.deletedAt || l.deletedAt > cutoff)
     data.recoveryCodes = data.recoveryCodes.filter((r) => !r.deletedAt || r.deletedAt > cutoff)
-    if (data.apiKeys.length + data.logins.length + data.recoveryCodes.length !== before) {
+    data.secureNotes = data.secureNotes.filter((n) => !n.deletedAt || n.deletedAt > cutoff)
+    if (data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length !== before) {
       await this.persist()
     }
   }
@@ -308,6 +346,12 @@ class VaultStore {
       .map(toRecoveryCodeSummary)
   }
 
+  listSecureNotes(): SecureNoteSummary[] {
+    return this.ensureUnlocked()
+      .secureNotes.filter((n) => !n.deletedAt)
+      .map(toSecureNoteSummary)
+  }
+
   /** Biometric-gated in ipc-handlers before this is called. */
   getApiKeyValue(id: string): string | null {
     const data = this.ensureUnlocked()
@@ -324,6 +368,12 @@ class VaultStore {
   getRecoveryCodes(id: string): string[] | null {
     const data = this.ensureUnlocked()
     return data.recoveryCodes.find((r) => r.id === id)?.codes ?? null
+  }
+
+  /** Biometric-gated in ipc-handlers before this is called. */
+  getSecureNoteContent(id: string): string | null {
+    const data = this.ensureUnlocked()
+    return data.secureNotes.find((n) => n.id === id)?.content ?? null
   }
 
   /** Biometric-gated in ipc-handlers before this is called (used for bulk export). */
@@ -395,6 +445,15 @@ class VaultStore {
     return full.map(toRecoveryCodeSummary)
   }
 
+  async addSecureNote(entry: Omit<SecureNoteRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<SecureNoteSummary> {
+    const data = this.ensureUnlocked()
+    const now = Date.now()
+    const full: SecureNoteRecord = { ...entry, id: randomUUID(), createdAt: now, updatedAt: now }
+    data.secureNotes.push(full)
+    await this.persist()
+    return toSecureNoteSummary(full)
+  }
+
   /** Soft-delete — kept in storage so it can be restored (undo), swept after 30 days. */
   async deleteApiKey(id: string): Promise<void> {
     const data = this.ensureUnlocked()
@@ -437,6 +496,21 @@ class VaultStore {
     const data = this.ensureUnlocked()
     const entry = data.recoveryCodes.find((r) => r.id === id)
     if (entry) entry.deletedAt = undefined
+    await this.persist()
+  }
+
+  /** Soft-delete — kept in storage so it can be restored (undo), swept after 30 days. */
+  async deleteSecureNote(id: string): Promise<void> {
+    const data = this.ensureUnlocked()
+    const note = data.secureNotes.find((n) => n.id === id)
+    if (note) note.deletedAt = Date.now()
+    await this.persist()
+  }
+
+  async restoreSecureNote(id: string): Promise<void> {
+    const data = this.ensureUnlocked()
+    const note = data.secureNotes.find((n) => n.id === id)
+    if (note) note.deletedAt = undefined
     await this.persist()
   }
 
@@ -517,6 +591,18 @@ class VaultStore {
     entry.updatedAt = Date.now()
     await this.persist()
     return toRecoveryCodeSummary(entry)
+  }
+
+  /** Biometric-gated in ipc-handlers before this is called (edit flow needs the current content prefilled). */
+  async updateSecureNote(id: string, patch: { title: string; content: string }): Promise<SecureNoteSummary> {
+    const data = this.ensureUnlocked()
+    const note = data.secureNotes.find((n) => n.id === id)
+    if (!note) throw new Error('Secure note not found')
+    note.title = patch.title
+    note.content = patch.content
+    note.updatedAt = Date.now()
+    await this.persist()
+    return toSecureNoteSummary(note)
   }
 
   async setLoginFavorite(id: string, favorite: boolean): Promise<LoginSummary> {

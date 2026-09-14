@@ -13,6 +13,7 @@ const vaultAPI: VaultAPI = {
   listApiKeys: () => ipcRenderer.invoke('vault:listApiKeys'),
   listLogins: () => ipcRenderer.invoke('vault:listLogins'),
   listRecoveryCodes: () => ipcRenderer.invoke('vault:listRecoveryCodes'),
+  listSecureNotes: () => ipcRenderer.invoke('vault:listSecureNotes'),
 
   addApiKey: (entry) => ipcRenderer.invoke('vault:addApiKey', entry),
   addApiKeys: (entries) => ipcRenderer.invoke('vault:addApiKeys', entries),
@@ -20,20 +21,25 @@ const vaultAPI: VaultAPI = {
   addLogins: (entries) => ipcRenderer.invoke('vault:addLogins', entries),
   addRecoveryCode: (entry) => ipcRenderer.invoke('vault:addRecoveryCode', entry),
   addRecoveryCodesBatch: (entries) => ipcRenderer.invoke('vault:addRecoveryCodesBatch', entries),
+  addSecureNote: (entry) => ipcRenderer.invoke('vault:addSecureNote', entry),
 
   deleteApiKey: (id) => ipcRenderer.invoke('vault:deleteApiKey', id),
   deleteLogin: (id) => ipcRenderer.invoke('vault:deleteLogin', id),
   deleteRecoveryCode: (id) => ipcRenderer.invoke('vault:deleteRecoveryCode', id),
+  deleteSecureNote: (id) => ipcRenderer.invoke('vault:deleteSecureNote', id),
   restoreApiKey: (id) => ipcRenderer.invoke('vault:restoreApiKey', id),
   restoreLogin: (id) => ipcRenderer.invoke('vault:restoreLogin', id),
   restoreRecoveryCode: (id) => ipcRenderer.invoke('vault:restoreRecoveryCode', id),
+  restoreSecureNote: (id) => ipcRenderer.invoke('vault:restoreSecureNote', id),
 
   revealApiKeyValue: (id) => ipcRenderer.invoke('vault:revealApiKeyValue', id),
   revealLoginPassword: (id) => ipcRenderer.invoke('vault:revealLoginPassword', id),
   revealRecoveryCodes: (id) => ipcRenderer.invoke('vault:revealRecoveryCodes', id),
+  revealSecureNoteContent: (id) => ipcRenderer.invoke('vault:revealSecureNoteContent', id),
   copyApiKeyValue: (id) => ipcRenderer.invoke('vault:copyApiKeyValue', id),
   copyLoginPassword: (id) => ipcRenderer.invoke('vault:copyLoginPassword', id),
   copyRecoveryCode: (code) => ipcRenderer.invoke('vault:copyRecoveryCode', code),
+  copySecureNoteContent: (id) => ipcRenderer.invoke('vault:copySecureNoteContent', id),
   exportLoginsCsv: (ids) => ipcRenderer.invoke('vault:exportLoginsCsv', ids),
 
   copyToClipboard: (value) => ipcRenderer.invoke('vault:copyToClipboard', value),
@@ -60,6 +66,7 @@ const vaultAPI: VaultAPI = {
   updateApiKey: (id, patch) => ipcRenderer.invoke('vault:updateApiKey', id, patch),
   updateLogin: (id, patch) => ipcRenderer.invoke('vault:updateLogin', id, patch),
   updateRecoveryCode: (id, patch) => ipcRenderer.invoke('vault:updateRecoveryCode', id, patch),
+  updateSecureNote: (id, patch) => ipcRenderer.invoke('vault:updateSecureNote', id, patch),
 
   setLoginFavorite: (id, favorite) => ipcRenderer.invoke('vault:setLoginFavorite', id, favorite),
 

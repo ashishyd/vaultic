@@ -7,10 +7,12 @@ import { ApiKeyList } from './components/ApiKeyList'
 import { LoginList } from './components/LoginList'
 import { PasswordHealthView } from './components/PasswordHealthView'
 import { RecoveryCodesView } from './components/RecoveryCodesView'
+import { SecureNotesView } from './components/SecureNotesView'
 import { AddEntryModal } from './components/AddEntryModal'
 import { ScanImportModal } from './components/ScanImportModal'
 import { ScanRecoveryCodesModal } from './components/ScanRecoveryCodesModal'
 import { RecoveryCodesFormModal } from './components/RecoveryCodesFormModal'
+import { SecureNoteFormModal } from './components/SecureNoteFormModal'
 import { ImportLoginsModal } from './components/ImportLoginsModal'
 import { EditEntryModal } from './components/EditEntryModal'
 import { SettingsModal } from './components/SettingsModal'
@@ -36,6 +38,8 @@ export default function App(): JSX.Element {
   const [showAddRecoveryCodes, setShowAddRecoveryCodes] = useState(false)
   const [showScanRecoveryCodes, setShowScanRecoveryCodes] = useState(false)
   const [editRecoveryCodesId, setEditRecoveryCodesId] = useState<string | null>(null)
+  const [showAddSecureNote, setShowAddSecureNote] = useState(false)
+  const [editSecureNoteId, setEditSecureNoteId] = useState<string | null>(null)
 
   useEffect(() => {
     window.vaultAPI.hasVault().then(setHasVault)
@@ -107,6 +111,9 @@ export default function App(): JSX.Element {
                 onScan={() => setShowScanRecoveryCodes(true)}
               />
             )}
+            {section === 'notes' && (
+              <SecureNotesView onEdit={(id) => setEditSecureNoteId(id)} onAdd={() => setShowAddSecureNote(true)} />
+            )}
             {section === 'analysis' && <PasswordHealthView />}
           </main>
 
@@ -127,6 +134,10 @@ export default function App(): JSX.Element {
           )}
           {editRecoveryCodesId && (
             <RecoveryCodesFormModal id={editRecoveryCodesId} onClose={() => setEditRecoveryCodesId(null)} />
+          )}
+          {showAddSecureNote && <SecureNoteFormModal onClose={() => setShowAddSecureNote(false)} />}
+          {editSecureNoteId && (
+            <SecureNoteFormModal id={editSecureNoteId} onClose={() => setEditSecureNoteId(null)} />
           )}
         </div>
       )}

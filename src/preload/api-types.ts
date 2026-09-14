@@ -35,6 +35,14 @@ export interface RecoveryCodeSummary {
   updatedAt: number
 }
 
+export interface SecureNoteSummary {
+  id: string
+  title: string
+  contentLength: number
+  createdAt: number
+  updatedAt: number
+}
+
 export interface ScannedFile {
   project: string
   filePath: string
@@ -92,6 +100,7 @@ export interface VaultAPI {
   listApiKeys: () => Promise<ApiKeySummary[]>
   listLogins: () => Promise<LoginSummary[]>
   listRecoveryCodes: () => Promise<RecoveryCodeSummary[]>
+  listSecureNotes: () => Promise<SecureNoteSummary[]>
 
   addApiKey: (entry: { project: string; name: string; value: string; notes?: string }) => Promise<ApiKeySummary>
   addApiKeys: (
@@ -111,21 +120,26 @@ export interface VaultAPI {
   addRecoveryCodesBatch: (
     entries: Array<{ service: string; codes: string[]; notes?: string }>
   ) => Promise<RecoveryCodeSummary[]>
+  addSecureNote: (entry: { title: string; content: string }) => Promise<SecureNoteSummary>
 
   deleteApiKey: (id: string) => Promise<void>
   deleteLogin: (id: string) => Promise<void>
   deleteRecoveryCode: (id: string) => Promise<void>
+  deleteSecureNote: (id: string) => Promise<void>
   restoreApiKey: (id: string) => Promise<void>
   restoreLogin: (id: string) => Promise<void>
   restoreRecoveryCode: (id: string) => Promise<void>
+  restoreSecureNote: (id: string) => Promise<void>
 
   // Biometric-gated (falls back to allowed-through when no Touch ID is available).
   revealApiKeyValue: (id: string) => Promise<string | null>
   revealLoginPassword: (id: string) => Promise<string | null>
   revealRecoveryCodes: (id: string) => Promise<string[] | null>
+  revealSecureNoteContent: (id: string) => Promise<string | null>
   copyApiKeyValue: (id: string) => Promise<boolean>
   copyLoginPassword: (id: string) => Promise<boolean>
   copyRecoveryCode: (code: string) => Promise<boolean>
+  copySecureNoteContent: (id: string) => Promise<boolean>
   exportLoginsCsv: (ids: string[]) => Promise<{ success: boolean; filePath?: string }>
 
   // Not gated — these aren't secrets.
@@ -164,6 +178,7 @@ export interface VaultAPI {
     id: string,
     patch: { service: string; codes: string[]; notes?: string }
   ) => Promise<RecoveryCodeSummary | null>
+  updateSecureNote: (id: string, patch: { title: string; content: string }) => Promise<SecureNoteSummary | null>
 
   setLoginFavorite: (id: string, favorite: boolean) => Promise<LoginSummary>
 

@@ -6,6 +6,7 @@ import {
   LockIcon,
   ShieldIcon,
   LifeBuoyIcon,
+  NoteIcon,
   AlertTriangleIcon,
   ChevronLeftIcon,
   ChevronRightIcon
@@ -17,7 +18,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
-  const { section, setSection, apiKeys, logins, recoveryCodes } = useVaultStore()
+  const { section, setSection, apiKeys, logins, recoveryCodes, secureNotes } = useVaultStore()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [weakCount, setWeakCount] = useState(0)
   const [reusedCount, setReusedCount] = useState(0)
@@ -77,6 +78,7 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
           'Recovery Codes',
           recoveryCodes.length
         )}
+        {navItem(section === 'notes', () => setSection('notes'), <NoteIcon />, 'Secure Notes', secureNotes.length)}
         {navItem(section === 'analysis', () => setSection('analysis'), <ShieldIcon />, 'Password Health')}
       </nav>
 
