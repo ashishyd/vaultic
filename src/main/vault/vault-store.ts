@@ -21,6 +21,8 @@ interface ApiKeyRecord {
   name: string
   value: string
   notes?: string
+  /** Basename of the .env file this key was imported from (e.g. ".env", ".env.local"). Unset for manually-added keys. */
+  envFile?: string
   createdAt: number
   updatedAt: number
   deletedAt?: number
@@ -94,6 +96,7 @@ export interface ApiKeySummary {
   project: string
   name: string
   notes?: string
+  envFile?: string
   createdAt: number
   updatedAt: number
 }
@@ -133,6 +136,7 @@ function toApiKeySummary(r: ApiKeyRecord): ApiKeySummary {
     project: r.project,
     name: r.name,
     notes: r.notes,
+    envFile: r.envFile,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt ?? r.createdAt
   }
@@ -466,6 +470,30 @@ class VaultStore {
     const data = this.ensureUnlocked()
     const key = data.apiKeys.find((k) => k.id === id)
     if (key) key.deletedAt = undefined
+    await this.persist()
+  }
+
+  /** Soft-deletes every non-deleted key in a project. Returns the deleted ids for undo. */
+  async deleteApiKeysByProject(project: string): Promise<string[]> {
+    const data = this.ensureUnlocked()
+    const now = Date.now()
+    const ids: string[] = []
+    for (const key of data.apiKeys) {
+      if (key.project === project && !key.deletedAt) {
+        key.deletedAt = now
+        ids.push(key.id)
+      }
+    }
+    await this.persist()
+    return ids
+  }
+
+  async restoreApiKeys(ids: string[]): Promise<void> {
+    const data = this.ensureUnlocked()
+    const idSet = new Set(ids)
+    for (const key of data.apiKeys) {
+      if (idSet.has(key.id)) key.deletedAt = undefined
+    }
     await this.persist()
   }
 

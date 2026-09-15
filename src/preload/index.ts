@@ -24,10 +24,12 @@ const vaultAPI: VaultAPI = {
   addSecureNote: (entry) => ipcRenderer.invoke('vault:addSecureNote', entry),
 
   deleteApiKey: (id) => ipcRenderer.invoke('vault:deleteApiKey', id),
+  deleteApiKeysByProject: (project) => ipcRenderer.invoke('vault:deleteApiKeysByProject', project),
   deleteLogin: (id) => ipcRenderer.invoke('vault:deleteLogin', id),
   deleteRecoveryCode: (id) => ipcRenderer.invoke('vault:deleteRecoveryCode', id),
   deleteSecureNote: (id) => ipcRenderer.invoke('vault:deleteSecureNote', id),
   restoreApiKey: (id) => ipcRenderer.invoke('vault:restoreApiKey', id),
+  restoreApiKeys: (ids) => ipcRenderer.invoke('vault:restoreApiKeys', ids),
   restoreLogin: (id) => ipcRenderer.invoke('vault:restoreLogin', id),
   restoreRecoveryCode: (id) => ipcRenderer.invoke('vault:restoreRecoveryCode', id),
   restoreSecureNote: (id) => ipcRenderer.invoke('vault:restoreSecureNote', id),

@@ -46,11 +46,12 @@ export function ScanImportModal({ onClose }: ScanImportModalProps): JSX.Element 
   async function handleImport(): Promise<void> {
     setImporting(true)
     try {
-      const entries: Array<{ project: string; name: string; value: string }> = []
+      const entries: Array<{ project: string; name: string; value: string; envFile: string }> = []
       results.forEach((file, fi) => {
+        const envFile = file.filePath.split(/[/\\]/).pop() ?? file.filePath
         file.keys.forEach((key, ki) => {
           if (selected.has(keyId(fi, ki))) {
-            entries.push({ project: file.project, name: key.name, value: key.value })
+            entries.push({ project: file.project, name: key.name, value: key.value, envFile })
           }
         })
       })

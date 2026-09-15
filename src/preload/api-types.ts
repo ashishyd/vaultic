@@ -3,6 +3,7 @@ export interface ApiKeySummary {
   project: string
   name: string
   notes?: string
+  envFile?: string
   createdAt: number
   updatedAt: number
 }
@@ -102,9 +103,15 @@ export interface VaultAPI {
   listRecoveryCodes: () => Promise<RecoveryCodeSummary[]>
   listSecureNotes: () => Promise<SecureNoteSummary[]>
 
-  addApiKey: (entry: { project: string; name: string; value: string; notes?: string }) => Promise<ApiKeySummary>
+  addApiKey: (entry: {
+    project: string
+    name: string
+    value: string
+    notes?: string
+    envFile?: string
+  }) => Promise<ApiKeySummary>
   addApiKeys: (
-    entries: Array<{ project: string; name: string; value: string; notes?: string }>
+    entries: Array<{ project: string; name: string; value: string; notes?: string; envFile?: string }>
   ) => Promise<ApiKeySummary[]>
   addLogin: (entry: {
     service: string
@@ -123,10 +130,12 @@ export interface VaultAPI {
   addSecureNote: (entry: { title: string; content: string }) => Promise<SecureNoteSummary>
 
   deleteApiKey: (id: string) => Promise<void>
+  deleteApiKeysByProject: (project: string) => Promise<string[]>
   deleteLogin: (id: string) => Promise<void>
   deleteRecoveryCode: (id: string) => Promise<void>
   deleteSecureNote: (id: string) => Promise<void>
   restoreApiKey: (id: string) => Promise<void>
+  restoreApiKeys: (ids: string[]) => Promise<void>
   restoreLogin: (id: string) => Promise<void>
   restoreRecoveryCode: (id: string) => Promise<void>
   restoreSecureNote: (id: string) => Promise<void>

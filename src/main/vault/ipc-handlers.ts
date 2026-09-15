@@ -72,13 +72,13 @@ export function registerVaultIpcHandlers(): void {
 
   ipcMain.handle(
     'vault:addApiKey',
-    (_e, entry: { project: string; name: string; value: string; notes?: string }) =>
+    (_e, entry: { project: string; name: string; value: string; notes?: string; envFile?: string }) =>
       vaultStore.addApiKey(entry)
   )
 
   ipcMain.handle(
     'vault:addApiKeys',
-    (_e, entries: Array<{ project: string; name: string; value: string; notes?: string }>) =>
+    (_e, entries: Array<{ project: string; name: string; value: string; notes?: string; envFile?: string }>) =>
       vaultStore.addApiKeys(entries)
   )
 
@@ -111,10 +111,14 @@ export function registerVaultIpcHandlers(): void {
 
   // Soft-delete — supports the Undo action shown in the toast after a delete.
   ipcMain.handle('vault:deleteApiKey', (_e, id: string) => vaultStore.deleteApiKey(id))
+  ipcMain.handle('vault:deleteApiKeysByProject', (_e, project: string) =>
+    vaultStore.deleteApiKeysByProject(project)
+  )
   ipcMain.handle('vault:deleteLogin', (_e, id: string) => vaultStore.deleteLogin(id))
   ipcMain.handle('vault:deleteRecoveryCode', (_e, id: string) => vaultStore.deleteRecoveryCode(id))
   ipcMain.handle('vault:deleteSecureNote', (_e, id: string) => vaultStore.deleteSecureNote(id))
   ipcMain.handle('vault:restoreApiKey', (_e, id: string) => vaultStore.restoreApiKey(id))
+  ipcMain.handle('vault:restoreApiKeys', (_e, ids: string[]) => vaultStore.restoreApiKeys(ids))
   ipcMain.handle('vault:restoreLogin', (_e, id: string) => vaultStore.restoreLogin(id))
   ipcMain.handle('vault:restoreRecoveryCode', (_e, id: string) => vaultStore.restoreRecoveryCode(id))
   ipcMain.handle('vault:restoreSecureNote', (_e, id: string) => vaultStore.restoreSecureNote(id))
