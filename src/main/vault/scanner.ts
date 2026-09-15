@@ -18,7 +18,10 @@ const EXCLUDED_DIRS = new Set([
 
 const MAX_DEPTH = 6
 
+const ENV_TEMPLATE_RE = /\.(example|sample|template|dist)$/i
+
 function isEnvFile(filename: string): boolean {
+  if (ENV_TEMPLATE_RE.test(filename)) return false
   return filename === '.env' || filename.startsWith('.env.') || filename.endsWith('.env')
 }
 
