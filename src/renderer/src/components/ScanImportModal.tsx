@@ -7,10 +7,12 @@ interface ScanImportModalProps {
 }
 
 export function ScanImportModal({ onClose }: ScanImportModalProps): JSX.Element {
+  const apiKeys = useVaultStore((s) => s.apiKeys)
   const refresh = useVaultStore((s) => s.refresh)
   const [folder, setFolder] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const [results, setResults] = useState<ScannedFile[]>([])
+  const [skippedProjects, setSkippedProjects] = useState<string[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [importing, setImporting] = useState(false)
 
@@ -25,9 +27,15 @@ export function ScanImportModal({ onClose }: ScanImportModalProps): JSX.Element 
     setScanning(true)
     try {
       const scanResults = await window.vaultAPI.scanFolder(picked)
-      setResults(scanResults)
+      // Projects already in the vault aren't rescanned — delete the folder from
+      // API Keys first if you want to re-import it with fresh values.
+      const existingProjects = new Set(apiKeys.map((k) => k.project))
+      const fresh = scanResults.filter((file) => !existingProjects.has(file.project))
+      const skipped = [...new Set(scanResults.filter((file) => existingProjects.has(file.project)).map((f) => f.project))]
+      setResults(fresh)
+      setSkippedProjects(skipped)
       const all = new Set<string>()
-      scanResults.forEach((file, fi) => file.keys.forEach((_, ki) => all.add(keyId(fi, ki))))
+      fresh.forEach((file, fi) => file.keys.forEach((_, ki) => all.add(keyId(fi, ki))))
       setSelected(all)
     } finally {
       setScanning(false)
@@ -90,6 +98,13 @@ export function ScanImportModal({ onClose }: ScanImportModalProps): JSX.Element 
 
         {scanning && <p className="text-xs text-vt-muted">Scanning…</p>}
 
+        {!scanning && skippedProjects.length > 0 && (
+          <p className="mb-3 text-xs text-vt-muted">
+            Already imported, skipped: <span className="font-medium">{skippedProjects.join(', ')}</span>. Delete the
+            folder in API Keys first to rescan it.
+          </p>
+        )}
+
         {!scanning && results.length > 0 && (
           <div className="flex-1 overflow-y-auto rounded-lg border border-vt-border">
             {results.map((file, fi) => (
@@ -112,8 +127,12 @@ export function ScanImportModal({ onClose }: ScanImportModalProps): JSX.Element 
           </div>
         )}
 
-        {!scanning && folder && results.length === 0 && (
+        {!scanning && folder && results.length === 0 && skippedProjects.length === 0 && (
           <p className="text-xs text-vt-muted">No .env files with keys found in that folder.</p>
+        )}
+
+        {!scanning && folder && results.length === 0 && skippedProjects.length > 0 && (
+          <p className="text-xs text-vt-muted">Nothing new to import — every project found was already scanned.</p>
         )}
 
         <div className="mt-4 flex justify-end gap-2">
