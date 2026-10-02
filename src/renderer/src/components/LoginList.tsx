@@ -6,7 +6,7 @@ import { hostnameOf } from '../lib/url'
 import { ConfirmDialog } from './ConfirmDialog'
 import { PageHeader } from './PageHeader'
 import { IconButton } from './IconButton'
-import { UserIcon, CopyIcon, EyeIcon, PencilIcon, TrashIcon, StarIcon, PlusIcon } from './icons'
+import { UserIcon, CopyIcon, EyeIcon, PencilIcon, TrashIcon, StarIcon, PlusIcon, ShieldIcon } from './icons'
 
 interface LoginListProps {
   onEdit: (id: string) => void
@@ -113,10 +113,10 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
   async function handleCopyForChromeTab(): Promise<void> {
     setCopyingFromChrome(true)
     try {
-      const url = await window.vaultAPI.getFrontmostChromeTabUrl()
-      const host = hostnameOf(url ?? undefined)
+      const result = await window.vaultAPI.getFrontmostBrowserTabUrl()
+      const host = hostnameOf(result?.url)
       if (!host) {
-        push("Couldn't read Chrome's active tab — is Chrome open?", 'error')
+        push("Couldn't read the active browser tab — is Chrome, Safari, or Edge frontmost?", 'error')
         return
       }
       const match = logins.find((l) => hostnameOf(l.url) === host)
@@ -126,12 +126,19 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
       }
       const ok = await window.vaultAPI.copyLoginPassword(match.id)
       push(
-        ok ? `Copied password for "${match.service}"` : 'Touch ID failed or was cancelled',
+        ok
+          ? `Copied password for "${match.service}" (${result?.browser ?? 'browser'})`
+          : 'Authentication failed or was cancelled',
         ok ? 'success' : 'error'
       )
     } finally {
       setCopyingFromChrome(false)
     }
+  }
+
+  async function handleCopyTotp(id: string): Promise<void> {
+    const ok = await window.vaultAPI.copyTotpCode(id)
+    push(ok ? 'Copied one-time code' : 'Authentication failed or was cancelled', ok ? 'success' : 'error')
   }
 
   async function handleToggleFavorite(id: string, favorite: boolean): Promise<void> {
@@ -206,7 +213,7 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
               disabled={copyingFromChrome}
               className="rounded-lg border border-vt-border bg-transparent px-3.5 py-2 text-sm text-vt-text hover:bg-vt-surface2 disabled:opacity-50"
             >
-              {copyingFromChrome ? 'Checking Chrome…' : 'Copy for current tab'}
+              {copyingFromChrome ? 'Checking browser…' : 'Copy for current tab'}
             </button>
             <button
               onClick={onImportLogins}
@@ -381,6 +388,11 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
                           <IconButton onClick={() => handleCopyPassword(login.id)} title="Copy password" tone="teal">
                             <CopyIcon size={14} />
                           </IconButton>
+                          {login.hasTotp && (
+                            <IconButton onClick={() => void handleCopyTotp(login.id)} title="Copy one-time code" tone="teal">
+                              <ShieldIcon size={14} />
+                            </IconButton>
+                          )}
                           <IconButton onClick={() => toggleReveal(login.id)} title={revealed.has(login.id) ? 'Hide' : 'Show'}>
                             <EyeIcon size={14} />
                           </IconButton>

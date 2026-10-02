@@ -21,11 +21,17 @@ export async function promptBiometrics(reason: string): Promise<boolean> {
 }
 
 /**
- * Gate a sensitive action behind Touch ID. On Macs without Touch ID hardware
- * or enrollment there is nothing to gate with, so the action is allowed through
- * (the user already authenticated with the master password to unlock the vault).
+ * Gate a sensitive action behind Touch ID when available. When Touch ID isn't
+ * available, calls `fallback` (typically a master-password re-prompt) so the
+ * action is never silently allow-through after unlock alone.
  */
-export async function biometricGate(reason: string): Promise<boolean> {
-  if (!isBiometricsAvailable()) return true
-  return promptBiometrics(reason)
+export async function biometricGate(
+  reason: string,
+  fallback?: () => Promise<boolean>
+): Promise<boolean> {
+  if (isBiometricsAvailable()) {
+    return promptBiometrics(reason)
+  }
+  if (fallback) return fallback()
+  return false
 }

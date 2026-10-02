@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useToastStore } from '../stores/toast-store'
 import { ConfirmDialog } from './ConfirmDialog'
+import { useEscapeKey } from '../lib/use-escape-key'
 
 interface RecoveryModalProps {
   onClose: () => void
@@ -16,6 +17,8 @@ export function RecoveryModal({ onClose }: RecoveryModalProps): JSX.Element {
   const [saving, setSaving] = useState(false)
   const [kitText, setKitText] = useState<string | null>(null)
   const [confirmingDisable, setConfirmingDisable] = useState(false)
+
+  useEscapeKey(onClose, !confirmingDisable)
 
   useEffect(() => {
     let cancelled = false
@@ -138,9 +141,9 @@ export function RecoveryModal({ onClose }: RecoveryModalProps): JSX.Element {
                   className="w-full rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2 font-mono text-[11px] text-vt-teal outline-none"
                 />
                 <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(kitText)
-                    push('Copied to clipboard', 'success')
+                  onClick={async () => {
+                    await window.vaultAPI.copyToClipboard(kitText)
+                    push('Copied to clipboard (clears in 30s)', 'success')
                   }}
                   className="self-start rounded-md border border-vt-border px-2 py-1 text-xs hover:bg-vt-surface2"
                 >

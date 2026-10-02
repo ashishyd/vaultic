@@ -1,8 +1,8 @@
 import { app } from 'electron'
-import { mkdir, readFile, writeFile, unlink } from 'fs/promises'
+import { mkdir, readFile, writeFile, unlink, open, rename, copyFile, stat } from 'fs/promises'
 import { existsSync } from 'fs'
-import { join } from 'path'
-import { randomUUID } from 'crypto'
+import { join, dirname } from 'path'
+import { randomUUID, timingSafeEqual } from 'crypto'
 import {
   decryptVault,
   decryptWithKey,
@@ -12,8 +12,10 @@ import {
   deriveKey,
   type EncryptedVault
 } from './crypto'
+import { generateTotpCode, normalizeTotpSecret } from './totp'
 
-const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000 // permanently purge soft-deletes after 30 days
+export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000 // permanently purge soft-deletes after 30 days
+const TRASH_RETENTION_MS_INTERNAL = TRASH_RETENTION_MS
 
 interface ApiKeyRecord {
   id: string
@@ -35,6 +37,8 @@ interface LoginRecord {
   password: string
   url?: string
   notes?: string
+  /** Base32 TOTP secret (or normalized from otpauth URI). Never sent in list summaries. */
+  totpSecret?: string
   createdAt: number
   updatedAt: number
   deletedAt?: number
@@ -111,6 +115,32 @@ export interface LoginSummary {
   updatedAt: number
   favorite: boolean
   labelIds: string[]
+  hasTotp: boolean
+}
+
+export type TrashKind = 'key' | 'login' | 'recovery' | 'note'
+
+export interface TrashItem {
+  kind: TrashKind
+  id: string
+  title: string
+  subtitle: string
+  deletedAt: number
+  expiresAt: number
+}
+
+export interface StorageInfo {
+  vaultPath: string
+  vaultBytes: number
+  recoveryEnabled: boolean
+  trashCount: number
+  retentionDays: number
+  counts: {
+    apiKeys: number
+    logins: number
+    recoveryCodes: number
+    secureNotes: number
+  }
 }
 
 export interface RecoveryCodeSummary {
@@ -152,7 +182,8 @@ function toLoginSummary(r: LoginRecord): LoginSummary {
     createdAt: r.createdAt,
     updatedAt: r.updatedAt ?? r.createdAt,
     favorite: r.favorite ?? false,
-    labelIds: r.labelIds ?? []
+    labelIds: r.labelIds ?? [],
+    hasTotp: Boolean(r.totpSecret)
   }
 }
 
@@ -203,6 +234,22 @@ function vaultPath(): string {
 
 function recoveryPath(): string {
   return join(app.getPath('userData'), 'recovery.enc')
+}
+
+/**
+ * Write then rename so a crash mid-write cannot leave a truncated vault.enc.
+ * Same-filesystem rename is atomic on macOS.
+ */
+async function writeFileAtomic(filePath: string, contents: string): Promise<void> {
+  const tmpPath = `${filePath}.tmp`
+  await writeFile(tmpPath, contents, 'utf8')
+  const handle = await open(tmpPath, 'r+')
+  try {
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+  await rename(tmpPath, filePath)
 }
 
 class VaultStore {
@@ -261,6 +308,17 @@ class VaultStore {
     return this.key
   }
 
+  /**
+   * Re-derives the vault key from the given password and compares it to the
+   * currently unlocked key. Used as a Touch ID fallback for sensitive actions.
+   */
+  async verifyMasterPassword(masterPassword: string): Promise<boolean> {
+    if (!this.key || !this.salt) return false
+    const derived = await deriveKey(masterPassword, this.salt)
+    if (derived.length !== this.key.length) return false
+    return timingSafeEqual(derived, this.key)
+  }
+
   lock(): void {
     this.data = null
     this.key = null
@@ -281,7 +339,7 @@ class VaultStore {
     const key = this.getRawKey()
     if (!key) throw new Error('Vault is locked')
     const wrapped = await encryptVault(key.toString('hex'), passphrase)
-    await writeFile(recoveryPath(), JSON.stringify(wrapped), 'utf8')
+    await writeFileAtomic(recoveryPath(), JSON.stringify(wrapped))
   }
 
   async clearRecovery(): Promise<void> {
@@ -314,13 +372,13 @@ class VaultStore {
     if (!existsSync(dir)) await mkdir(dir, { recursive: true })
     const plaintext = JSON.stringify(this.data)
     const encrypted = await encryptVaultWithKey(plaintext, this.key, this.salt)
-    await writeFile(vaultPath(), JSON.stringify(encrypted), 'utf8')
+    await writeFileAtomic(vaultPath(), JSON.stringify(encrypted))
   }
 
   /** Permanently drops anything soft-deleted more than 30 days ago. Runs on every unlock. */
   private async purgeOldTrash(): Promise<void> {
     const data = this.ensureUnlocked()
-    const cutoff = Date.now() - TRASH_RETENTION_MS
+    const cutoff = Date.now() - TRASH_RETENTION_MS_INTERNAL
     const before =
       data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length
     data.apiKeys = data.apiKeys.filter((k) => !k.deletedAt || k.deletedAt > cutoff)
@@ -412,7 +470,19 @@ class VaultStore {
   async addLogin(entry: Omit<LoginRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<LoginSummary> {
     const data = this.ensureUnlocked()
     const now = Date.now()
-    const full: LoginRecord = { ...entry, id: randomUUID(), createdAt: now, updatedAt: now }
+    let totpSecret = entry.totpSecret
+    if (totpSecret) {
+      const normalized = normalizeTotpSecret(totpSecret)
+      if (!normalized) throw new Error('Invalid TOTP secret')
+      totpSecret = normalized
+    }
+    const full: LoginRecord = {
+      ...entry,
+      totpSecret,
+      id: randomUUID(),
+      createdAt: now,
+      updatedAt: now
+    }
     data.logins.push(full)
     await this.persist()
     return toLoginSummary(full)
@@ -590,7 +660,15 @@ class VaultStore {
   /** Biometric-gated in ipc-handlers before this is called (edit flow needs the current password prefilled). */
   async updateLogin(
     id: string,
-    patch: { service: string; username: string; password: string; url?: string; notes?: string }
+    patch: {
+      service: string
+      username: string
+      password: string
+      url?: string
+      notes?: string
+      /** Pass null to clear; omit to leave unchanged; string to set/replace. */
+      totpSecret?: string | null
+    }
   ): Promise<LoginSummary> {
     const data = this.ensureUnlocked()
     const login = data.logins.find((l) => l.id === id)
@@ -600,6 +678,15 @@ class VaultStore {
     login.password = patch.password
     login.url = patch.url
     login.notes = patch.notes
+    if (patch.totpSecret !== undefined) {
+      if (patch.totpSecret === null || patch.totpSecret === '') {
+        delete login.totpSecret
+      } else {
+        const normalized = normalizeTotpSecret(patch.totpSecret)
+        if (!normalized) throw new Error('Invalid TOTP secret')
+        login.totpSecret = normalized
+      }
+    }
     login.updatedAt = Date.now()
     await this.persist()
     return toLoginSummary(login)
@@ -729,6 +816,207 @@ class VaultStore {
       login.labelIds = [...labelIds]
     }
     await this.persist()
+  }
+
+  getTotpSecret(id: string): string | null {
+    const login = this.ensureUnlocked().logins.find((l) => l.id === id && !l.deletedAt)
+    return login?.totpSecret ?? null
+  }
+
+  getTotpCode(id: string): { code: string; remainingSeconds: number } | null {
+    const secret = this.getTotpSecret(id)
+    if (!secret) return null
+    return generateTotpCode(secret)
+  }
+
+  listTrash(): TrashItem[] {
+    const data = this.ensureUnlocked()
+    const items: TrashItem[] = []
+    const retention = TRASH_RETENTION_MS_INTERNAL
+
+    for (const k of data.apiKeys) {
+      if (!k.deletedAt) continue
+      items.push({
+        kind: 'key',
+        id: k.id,
+        title: k.name,
+        subtitle: k.project,
+        deletedAt: k.deletedAt,
+        expiresAt: k.deletedAt + retention
+      })
+    }
+    for (const l of data.logins) {
+      if (!l.deletedAt) continue
+      items.push({
+        kind: 'login',
+        id: l.id,
+        title: l.service,
+        subtitle: l.username || '(no username)',
+        deletedAt: l.deletedAt,
+        expiresAt: l.deletedAt + retention
+      })
+    }
+    for (const r of data.recoveryCodes) {
+      if (!r.deletedAt) continue
+      items.push({
+        kind: 'recovery',
+        id: r.id,
+        title: r.service,
+        subtitle: `${r.codes.length} code${r.codes.length === 1 ? '' : 's'}`,
+        deletedAt: r.deletedAt,
+        expiresAt: r.deletedAt + retention
+      })
+    }
+    for (const n of data.secureNotes) {
+      if (!n.deletedAt) continue
+      items.push({
+        kind: 'note',
+        id: n.id,
+        title: n.title,
+        subtitle: 'Secure note',
+        deletedAt: n.deletedAt,
+        expiresAt: n.deletedAt + retention
+      })
+    }
+
+    return items.sort((a, b) => b.deletedAt - a.deletedAt)
+  }
+
+  async restoreTrashItem(kind: TrashKind, id: string): Promise<void> {
+    if (kind === 'key') await this.restoreApiKey(id)
+    else if (kind === 'login') await this.restoreLogin(id)
+    else if (kind === 'recovery') await this.restoreRecoveryCode(id)
+    else await this.restoreSecureNote(id)
+  }
+
+  async permanentlyDeleteTrashItem(kind: TrashKind, id: string): Promise<void> {
+    const data = this.ensureUnlocked()
+    if (kind === 'key') data.apiKeys = data.apiKeys.filter((k) => k.id !== id)
+    else if (kind === 'login') data.logins = data.logins.filter((l) => l.id !== id)
+    else if (kind === 'recovery') data.recoveryCodes = data.recoveryCodes.filter((r) => r.id !== id)
+    else data.secureNotes = data.secureNotes.filter((n) => n.id !== id)
+    await this.persist()
+  }
+
+  async emptyTrash(): Promise<number> {
+    const data = this.ensureUnlocked()
+    const before =
+      data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length
+    data.apiKeys = data.apiKeys.filter((k) => !k.deletedAt)
+    data.logins = data.logins.filter((l) => !l.deletedAt)
+    data.recoveryCodes = data.recoveryCodes.filter((r) => !r.deletedAt)
+    data.secureNotes = data.secureNotes.filter((n) => !n.deletedAt)
+    const removed =
+      before -
+      (data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length)
+    if (removed > 0) await this.persist()
+    return removed
+  }
+
+  async getStorageInfo(): Promise<StorageInfo> {
+    this.ensureUnlocked()
+    const path = vaultPath()
+    let vaultBytes = 0
+    if (existsSync(path)) {
+      vaultBytes = (await stat(path)).size
+    }
+    const trash = this.listTrash()
+    return {
+      vaultPath: path,
+      vaultBytes,
+      recoveryEnabled: this.hasRecovery(),
+      trashCount: trash.length,
+      retentionDays: Math.round(TRASH_RETENTION_MS_INTERNAL / (24 * 60 * 60 * 1000)),
+      counts: {
+        apiKeys: this.listApiKeys().length,
+        logins: this.listLogins().length,
+        recoveryCodes: this.listRecoveryCodes().length,
+        secureNotes: this.listSecureNotes().length
+      }
+    }
+  }
+
+  /** Copy vault.enc (and recovery.enc if present) next to the chosen backup path. */
+  async backupVault(destVaultPath: string): Promise<{ vaultPath: string; recoveryPath?: string }> {
+    if (!existsSync(vaultPath())) throw new Error('No vault file to back up')
+    await mkdir(dirname(destVaultPath), { recursive: true })
+    await copyFile(vaultPath(), destVaultPath)
+    let copiedRecovery: string | undefined
+    if (existsSync(recoveryPath())) {
+      const recoveryDest = destVaultPath.replace(/\.enc$/i, '') + '.recovery.enc'
+      await copyFile(recoveryPath(), recoveryDest)
+      copiedRecovery = recoveryDest
+    }
+    return { vaultPath: destVaultPath, recoveryPath: copiedRecovery }
+  }
+
+  /**
+   * Replace the on-disk vault with a backup file after verifying the password.
+   * Locks the in-memory session — caller must unlock again.
+   */
+  async restoreVaultFromBackup(sourcePath: string, masterPassword: string): Promise<void> {
+    const raw = await readFile(sourcePath, 'utf8')
+    const encrypted: EncryptedVault = JSON.parse(raw)
+    // Throws if password is wrong or file is corrupt.
+    await decryptVault(encrypted, masterPassword)
+
+    const dir = app.getPath('userData')
+    if (!existsSync(dir)) await mkdir(dir, { recursive: true })
+    await writeFileAtomic(vaultPath(), JSON.stringify(encrypted))
+
+    // Companion recovery file from our backup naming convention.
+    const companion = sourcePath.replace(/\.enc$/i, '') + '.recovery.enc'
+    if (existsSync(companion)) {
+      await writeFileAtomic(recoveryPath(), await readFile(companion, 'utf8'))
+    }
+
+    this.lock()
+  }
+
+  /**
+   * Re-encrypts the vault under a new master password. If recovery is enabled,
+   * pass the recovery passphrase to re-wrap the new key; otherwise recovery is cleared.
+   */
+  async changeMasterPassword(
+    currentPassword: string,
+    newPassword: string,
+    recoveryPassphrase?: string | null
+  ): Promise<{ recoveryCleared: boolean }> {
+    if (!(await this.verifyMasterPassword(currentPassword))) {
+      throw new Error('Wrong current password')
+    }
+    if (newPassword.length < 8) throw new Error('New password must be at least 8 characters')
+
+    const hadRecovery = this.hasRecovery()
+    let recoveryCleared = false
+
+    if (hadRecovery) {
+      if (recoveryPassphrase) {
+        // Verify passphrase unwraps to the current vault key before rotating.
+        const raw = await readFile(recoveryPath(), 'utf8')
+        const wrapped: EncryptedVault = JSON.parse(raw)
+        const { plaintext: rawKeyHex } = await decryptVault(wrapped, recoveryPassphrase)
+        const unwrapped = Buffer.from(rawKeyHex, 'hex')
+        if (!this.key || unwrapped.length !== this.key.length || !timingSafeEqual(unwrapped, this.key)) {
+          throw new Error('Wrong recovery passphrase')
+        }
+      } else {
+        await this.clearRecovery()
+        recoveryCleared = true
+      }
+    }
+
+    const newSalt = generateSalt()
+    const newKey = await deriveKey(newPassword, newSalt)
+    this.key = newKey
+    this.salt = newSalt
+    await this.persist()
+
+    if (hadRecovery && !recoveryCleared && recoveryPassphrase) {
+      await this.setupRecovery(recoveryPassphrase)
+    }
+
+    return { recoveryCleared }
   }
 }
 

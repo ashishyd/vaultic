@@ -12,6 +12,11 @@ export async function readCachedKey(): Promise<Buffer | null> {
   return hex ? Buffer.from(hex, 'hex') : null
 }
 
+export async function hasCachedKey(): Promise<boolean> {
+  const hex = await keytar.getPassword(SERVICE, ACCOUNT)
+  return hex !== null
+}
+
 export async function clearCachedKey(): Promise<void> {
   await keytar.deletePassword(SERVICE, ACCOUNT)
 }

@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 import type { ScannedFile } from '../../../preload/api-types'
+import { useEscapeKey } from '../lib/use-escape-key'
 
 interface ScanImportModalProps {
   onClose: () => void
 }
 
 export function ScanImportModal({ onClose }: ScanImportModalProps): JSX.Element {
+  useEscapeKey(onClose)
   const apiKeys = useVaultStore((s) => s.apiKeys)
   const refresh = useVaultStore((s) => s.refresh)
   const [folder, setFolder] = useState<string | null>(null)

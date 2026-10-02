@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 import { useToastStore } from '../stores/toast-store'
+import { useEscapeKey } from '../lib/use-escape-key'
 
 interface SecureNoteFormModalProps {
   /** When set, edits this existing note instead of creating a new one. */
@@ -9,6 +10,7 @@ interface SecureNoteFormModalProps {
 }
 
 export function SecureNoteFormModal({ id, onClose }: SecureNoteFormModalProps): JSX.Element {
+  useEscapeKey(onClose)
   const { secureNotes, refresh } = useVaultStore()
   const push = useToastStore((s) => s.push)
 

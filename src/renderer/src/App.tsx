@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useVaultStore } from './stores/vault-store'
 import { useToastStore } from './stores/toast-store'
 import { UnlockScreen } from './components/UnlockScreen'
@@ -19,14 +19,24 @@ import { SettingsModal } from './components/SettingsModal'
 import { ToastContainer } from './components/ToastContainer'
 import { CommandPalette } from './components/CommandPalette'
 import { LabelManagerModal } from './components/LabelManagerModal'
+import { MasterPasswordPrompt } from './components/MasterPasswordPrompt'
+import { TrashView } from './components/TrashView'
 
 export interface EditTarget {
   kind: 'key' | 'login'
   id: string
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  return target.isContentEditable
+}
+
 export default function App(): JSX.Element {
-  const { unlocked, hasVault, section, setUnlocked, setHasVault, refresh } = useVaultStore()
+  const { unlocked, hasVault, section, setUnlocked, setHasVault, refresh, setSection, requestFocusSearch } =
+    useVaultStore()
   const push = useToastStore((s) => s.push)
   const [showAdd, setShowAdd] = useState(false)
   const [showScan, setShowScan] = useState(false)
@@ -58,22 +68,39 @@ export default function App(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const handleLock = useCallback(async (): Promise<void> => {
+    await window.vaultAPI.lock()
+    setUnlocked(false)
+  }, [setUnlocked])
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent): void {
-      const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'
-      if (isCmdK && unlocked) {
+      if (!unlocked) return
+
+      const meta = e.metaKey || e.ctrlKey
+      const key = e.key.toLowerCase()
+
+      if (meta && key === 'k') {
         e.preventDefault()
         setShowPalette((prev) => !prev)
+        return
+      }
+
+      if (meta && key === 'l') {
+        e.preventDefault()
+        void handleLock()
+        return
+      }
+
+      // `/` focuses the page search — skip when already typing in a field.
+      if (e.key === '/' && !meta && !e.altKey && !isEditableTarget(e.target)) {
+        e.preventDefault()
+        requestFocusSearch()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [unlocked])
-
-  async function handleLock(): Promise<void> {
-    await window.vaultAPI.lock()
-    setUnlocked(false)
-  }
+  }, [unlocked, handleLock, requestFocusSearch])
 
   return (
     <>
@@ -87,7 +114,7 @@ export default function App(): JSX.Element {
         />
       ) : (
         <div className="flex h-screen">
-          <Sidebar onLock={handleLock} onSettings={() => setShowSettings(true)} />
+          <Sidebar onLock={() => void handleLock()} onSettings={() => setShowSettings(true)} />
           <main className="flex-1 overflow-hidden">
             {section === 'keys' && (
               <ApiKeyList
@@ -115,6 +142,7 @@ export default function App(): JSX.Element {
               <SecureNotesView onEdit={(id) => setEditSecureNoteId(id)} onAdd={() => setShowAddSecureNote(true)} />
             )}
             {section === 'analysis' && <PasswordHealthView />}
+            {section === 'trash' && <TrashView />}
           </main>
 
           {showAdd && <AddEntryModal section={section} onClose={() => setShowAdd(false)} />}
@@ -124,7 +152,23 @@ export default function App(): JSX.Element {
           {editTarget && (
             <EditEntryModal kind={editTarget.kind} id={editTarget.id} onClose={() => setEditTarget(null)} />
           )}
-          {showPalette && <CommandPalette onClose={() => setShowPalette(false)} />}
+          {showPalette && (
+            <CommandPalette
+              onClose={() => setShowPalette(false)}
+              onNavigate={(s) => {
+                setSection(s)
+                setShowPalette(false)
+              }}
+              onSettings={() => {
+                setShowSettings(true)
+                setShowPalette(false)
+              }}
+              onLock={() => {
+                setShowPalette(false)
+                void handleLock()
+              }}
+            />
+          )}
           {showLabelManager && <LabelManagerModal onClose={() => setShowLabelManager(false)} />}
           {showAddRecoveryCodes && (
             <RecoveryCodesFormModal onClose={() => setShowAddRecoveryCodes(false)} />
@@ -142,6 +186,7 @@ export default function App(): JSX.Element {
         </div>
       )}
 
+      <MasterPasswordPrompt />
       <ToastContainer />
     </>
   )

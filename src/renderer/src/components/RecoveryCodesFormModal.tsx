@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 import { useToastStore } from '../stores/toast-store'
+import { useEscapeKey } from '../lib/use-escape-key'
 
 interface RecoveryCodesFormModalProps {
   /** When set, edits this existing entry instead of creating a new one. */
@@ -9,6 +10,7 @@ interface RecoveryCodesFormModalProps {
 }
 
 export function RecoveryCodesFormModal({ id, onClose }: RecoveryCodesFormModalProps): JSX.Element {
+  useEscapeKey(onClose)
   const { recoveryCodes, refresh } = useVaultStore()
   const push = useToastStore((s) => s.push)
 

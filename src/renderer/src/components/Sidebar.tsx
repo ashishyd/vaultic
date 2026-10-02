@@ -9,8 +9,13 @@ import {
   NoteIcon,
   AlertTriangleIcon,
   ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  TrashIcon
 } from './icons'
+
+function TrashNavIcon(): JSX.Element {
+  return <TrashIcon size={16} />
+}
 
 interface SidebarProps {
   onLock: () => void
@@ -80,6 +85,7 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
         )}
         {navItem(section === 'notes', () => setSection('notes'), <NoteIcon />, 'Secure Notes', secureNotes.length)}
         {navItem(section === 'analysis', () => setSection('analysis'), <ShieldIcon />, 'Password Health')}
+        {navItem(section === 'trash', () => setSection('trash'), <TrashNavIcon />, 'Recently Deleted')}
       </nav>
 
       {sidebarOpen && (weakCount > 0 || reusedCount > 0) && (

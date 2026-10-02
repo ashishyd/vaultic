@@ -42,9 +42,9 @@ export function RecoveryCodesView({ onEdit, onAdd, onScan }: RecoveryCodesViewPr
     }
   }
 
-  async function handleCopyCode(code: string): Promise<void> {
-    const ok = await window.vaultAPI.copyRecoveryCode(code)
-    push(ok ? 'Copied to clipboard' : 'Touch ID failed or was cancelled', ok ? 'success' : 'error')
+  async function handleCopyCode(entryId: string, index: number): Promise<void> {
+    const ok = await window.vaultAPI.copyRecoveryCode(entryId, index)
+    push(ok ? 'Copied to clipboard' : 'Authentication failed or was cancelled', ok ? 'success' : 'error')
   }
 
   async function handleConfirmDelete(): Promise<void> {
@@ -136,7 +136,7 @@ export function RecoveryCodesView({ onEdit, onAdd, onScan }: RecoveryCodesViewPr
                       {codes.map((code, i) => (
                         <button
                           key={i}
-                          onClick={() => handleCopyCode(code)}
+                          onClick={() => handleCopyCode(entry.id, i)}
                           title="Copy code"
                           className="flex items-center justify-between gap-2 rounded-lg border border-vt-border bg-vt-surface2 px-2.5 py-1.5 text-left font-mono text-xs hover:border-vt-teal"
                         >

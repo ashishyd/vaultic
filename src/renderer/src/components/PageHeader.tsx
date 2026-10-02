@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 
 interface PageHeaderProps {
@@ -8,13 +8,21 @@ interface PageHeaderProps {
 }
 
 export function PageHeader({ title, searchPlaceholder, actions }: PageHeaderProps): JSX.Element {
-  const { search, setSearch } = useVaultStore()
+  const { search, setSearch, focusSearchToken } = useVaultStore()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!searchPlaceholder || focusSearchToken === 0) return
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [focusSearchToken, searchPlaceholder])
 
   return (
     <div className="flex items-center gap-4 border-b border-vt-border px-7 py-5">
       <h1 className="shrink-0 text-xl font-semibold">{title}</h1>
       {searchPlaceholder && (
         <input
+          ref={inputRef}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={searchPlaceholder}

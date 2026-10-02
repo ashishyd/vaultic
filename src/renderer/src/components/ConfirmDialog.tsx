@@ -1,3 +1,5 @@
+import { useEscapeKey } from '../lib/use-escape-key'
+
 interface ConfirmDialogProps {
   title: string
   message: string
@@ -15,6 +17,8 @@ export function ConfirmDialog({
   onConfirm,
   onCancel
 }: ConfirmDialogProps): JSX.Element {
+  useEscapeKey(onCancel, true, true)
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onCancel}>
       <div

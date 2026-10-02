@@ -1,22 +1,80 @@
-import { ipcMain, clipboard, dialog, BrowserWindow } from 'electron'
+import { ipcMain, clipboard, dialog, BrowserWindow, app } from 'electron'
 import { unlink, writeFile } from 'fs/promises'
-import { vaultStore } from './vault-store'
-import { cacheKey, readCachedKey } from './keychain'
+import { resolve as resolvePath } from 'path'
+import { randomUUID } from 'crypto'
+import { vaultStore, type TrashKind } from './vault-store'
+import { cacheKey, readCachedKey, clearCachedKey, hasCachedKey } from './keychain'
 import { scanForEnvFiles, scanForRecoveryCodes, parseRecoveryCodesFile } from './scanner'
-import { isBiometricsAvailable, biometricGate } from './biometric'
+import { isBiometricsAvailable, promptBiometrics, biometricGate } from './biometric'
 import { parseLoginsCsvFile, loginsToCsv } from './csv'
 import { analyzeLogins, generateStrongPassword } from './password-strength'
 import { suggestLabelsWithAi, detectAvailableCli } from './ai-cli'
 import { readSettings, writeSettings, type AppSettings } from './settings'
-import { getFrontmostChromeTabUrl } from './chrome'
+import { getFrontmostChromeTabUrl, getFrontmostBrowserTabUrl } from './chrome'
 
 const CLIPBOARD_CLEAR_MS = 30_000
+const MASTER_PASSWORD_PROMPT_TIMEOUT_MS = 5 * 60 * 1000
+
+/** Paths returned by the CSV picker that the renderer may later ask to delete. */
+const deletableImportPaths = new Set<string>()
+
+type PendingMasterPassword = {
+  resolve: (ok: boolean) => void
+  timer: ReturnType<typeof setTimeout>
+}
+
+const pendingMasterPassword = new Map<string, PendingMasterPassword>()
 
 function copyWithAutoClear(value: string): void {
   clipboard.writeText(value)
   setTimeout(() => {
     if (clipboard.readText() === value) clipboard.writeText('')
   }, CLIPBOARD_CLEAR_MS)
+}
+
+function finishMasterPasswordRequest(requestId: string, ok: boolean): void {
+  const pending = pendingMasterPassword.get(requestId)
+  if (!pending) return
+  clearTimeout(pending.timer)
+  pendingMasterPassword.delete(requestId)
+  pending.resolve(ok)
+}
+
+/**
+ * Ask the focused renderer window for the master password, then verify it
+ * against the currently unlocked vault key.
+ */
+function promptMasterPassword(reason: string): Promise<boolean> {
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  if (!win || win.isDestroyed()) return Promise.resolve(false)
+
+  const requestId = randomUUID()
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      finishMasterPasswordRequest(requestId, false)
+    }, MASTER_PASSWORD_PROMPT_TIMEOUT_MS)
+
+    pendingMasterPassword.set(requestId, { resolve, timer })
+    win.webContents.send('vault:needMasterPassword', { requestId, reason })
+  })
+}
+
+/** Touch ID when available; otherwise re-prompt for the master password. */
+function requireAuth(reason: string): Promise<boolean> {
+  return biometricGate(reason, () => promptMasterPassword(reason))
+}
+
+function allowDeleteOfPickedFile(filePath: string): void {
+  deletableImportPaths.add(resolvePath(filePath))
+}
+
+function takeDeletableImportPath(filePath: string): string | null {
+  const resolved = resolvePath(filePath)
+  if (deletableImportPaths.has(resolved)) {
+    deletableImportPaths.delete(resolved)
+    return resolved
+  }
+  return null
 }
 
 export function registerVaultIpcHandlers(): void {
@@ -40,13 +98,44 @@ export function registerVaultIpcHandlers(): void {
 
   ipcMain.handle('vault:canUseBiometrics', () => isBiometricsAvailable())
 
+  ipcMain.handle('vault:hasCachedKey', () => hasCachedKey())
+
+  /** Clears the Keychain-cached vault key so Touch ID unlock requires a master-password unlock first. */
+  ipcMain.handle('vault:clearCachedKey', async () => {
+    await clearCachedKey()
+    return true
+  })
+
+  /**
+   * Completes a master-password re-prompt started by requireAuth. Wrong passwords
+   * keep the prompt open (ok: false); cancel/success settles the pending gate.
+   */
+  ipcMain.handle(
+    'vault:confirmMasterPassword',
+    async (_e, requestId: string, password: string | null) => {
+      const pending = pendingMasterPassword.get(requestId)
+      if (!pending) return { ok: false as const, error: 'This confirmation request expired.' }
+
+      if (password === null) {
+        finishMasterPasswordRequest(requestId, false)
+        return { ok: true as const }
+      }
+
+      const valid = await vaultStore.verifyMasterPassword(password)
+      if (!valid) return { ok: false as const, error: 'Wrong master password.' }
+
+      finishMasterPasswordRequest(requestId, true)
+      return { ok: true as const }
+    }
+  )
+
   /** Prompts Touch ID, then unlocks using the OS keychain-cached key. Used on app launch. */
   ipcMain.handle('vault:unlockWithBiometrics', async () => {
     if (!vaultStore.hasVault()) return false
     const cachedKey = await readCachedKey()
     if (!cachedKey) return false
     if (!isBiometricsAvailable()) return false
-    const ok = await biometricGate('unlock Vaultic')
+    const ok = await promptBiometrics('unlock Vaultic')
     if (!ok) return false
     try {
       await vaultStore.unlockWithKey(cachedKey)
@@ -124,19 +213,19 @@ export function registerVaultIpcHandlers(): void {
   ipcMain.handle('vault:restoreSecureNote', (_e, id: string) => vaultStore.restoreSecureNote(id))
 
   ipcMain.handle('vault:revealApiKeyValue', async (_e, id: string) => {
-    const ok = await biometricGate('view this API key value')
+    const ok = await requireAuth('view this API key value')
     if (!ok) return null
     return vaultStore.getApiKeyValue(id)
   })
 
   ipcMain.handle('vault:revealLoginPassword', async (_e, id: string) => {
-    const ok = await biometricGate('view this password')
+    const ok = await requireAuth('view this password')
     if (!ok) return null
     return vaultStore.getLoginPassword(id)
   })
 
   ipcMain.handle('vault:copyApiKeyValue', async (_e, id: string) => {
-    const ok = await biometricGate('copy this API key value')
+    const ok = await requireAuth('copy this API key value')
     if (!ok) return false
     const value = vaultStore.getApiKeyValue(id)
     if (!value) return false
@@ -145,7 +234,7 @@ export function registerVaultIpcHandlers(): void {
   })
 
   ipcMain.handle('vault:copyLoginPassword', async (_e, id: string) => {
-    const ok = await biometricGate('copy this password')
+    const ok = await requireAuth('copy this password')
     if (!ok) return false
     const password = vaultStore.getLoginPassword(id)
     if (!password) return false
@@ -154,26 +243,29 @@ export function registerVaultIpcHandlers(): void {
   })
 
   ipcMain.handle('vault:revealRecoveryCodes', async (_e, id: string) => {
-    const ok = await biometricGate('view these recovery codes')
+    const ok = await requireAuth('view these recovery codes')
     if (!ok) return null
     return vaultStore.getRecoveryCodes(id)
   })
 
-  ipcMain.handle('vault:copyRecoveryCode', async (_e, code: string) => {
-    const ok = await biometricGate('copy this recovery code')
+  ipcMain.handle('vault:copyRecoveryCode', async (_e, id: string, index: number) => {
+    const ok = await requireAuth('copy this recovery code')
     if (!ok) return false
-    copyWithAutoClear(code)
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) return false
+    const codes = vaultStore.getRecoveryCodes(id)
+    if (!codes || index >= codes.length) return false
+    copyWithAutoClear(codes[index])
     return true
   })
 
   ipcMain.handle('vault:revealSecureNoteContent', async (_e, id: string) => {
-    const ok = await biometricGate('view this note')
+    const ok = await requireAuth('view this note')
     if (!ok) return null
     return vaultStore.getSecureNoteContent(id)
   })
 
   ipcMain.handle('vault:copySecureNoteContent', async (_e, id: string) => {
-    const ok = await biometricGate('copy this note')
+    const ok = await requireAuth('copy this note')
     if (!ok) return false
     const content = vaultStore.getSecureNoteContent(id)
     if (content === null) return false
@@ -244,18 +336,28 @@ export function registerVaultIpcHandlers(): void {
       ? await dialog.showOpenDialog(win, options)
       : await dialog.showOpenDialog(options)
     if (result.canceled || result.filePaths.length === 0) return null
-    return result.filePaths[0]
+    const picked = result.filePaths[0]
+    allowDeleteOfPickedFile(picked)
+    return picked
   })
 
   ipcMain.handle('vault:parseLoginsCsv', async (_e, filePath: string) => parseLoginsCsvFile(filePath))
 
+  // Only files previously returned by pickCsvFile may be deleted (one-shot allowlist).
   ipcMain.handle('vault:deleteFile', async (_e, filePath: string) => {
-    await unlink(filePath)
-    return true
+    if (typeof filePath !== 'string' || filePath.length === 0) return false
+    const allowed = takeDeletableImportPath(filePath)
+    if (!allowed) return false
+    try {
+      await unlink(allowed)
+      return true
+    } catch {
+      return false
+    }
   })
 
   ipcMain.handle('vault:exportLoginsCsv', async (_e, ids: string[]) => {
-    const ok = await biometricGate('export these passwords')
+    const ok = await requireAuth('export these passwords')
     if (!ok) return { success: false as const }
 
     const logins = vaultStore.getLoginsByIds(ids)
@@ -315,7 +417,7 @@ export function registerVaultIpcHandlers(): void {
   )
 
   ipcMain.handle('vault:updateLoginPassword', async (_e, id: string, newPassword: string) => {
-    const ok = await biometricGate('replace this password')
+    const ok = await requireAuth('replace this password')
     if (!ok) return false
     await vaultStore.updateLoginPassword(id, newPassword)
     return true
@@ -324,7 +426,7 @@ export function registerVaultIpcHandlers(): void {
   ipcMain.handle(
     'vault:updateApiKey',
     async (_e, id: string, patch: { project: string; name: string; value: string; notes?: string }) => {
-      const ok = await biometricGate('edit this API key')
+      const ok = await requireAuth('edit this API key')
       if (!ok) return null
       return vaultStore.updateApiKey(id, patch)
     }
@@ -335,9 +437,16 @@ export function registerVaultIpcHandlers(): void {
     async (
       _e,
       id: string,
-      patch: { service: string; username: string; password: string; url?: string; notes?: string }
+      patch: {
+        service: string
+        username: string
+        password: string
+        url?: string
+        notes?: string
+        totpSecret?: string | null
+      }
     ) => {
-      const ok = await biometricGate('edit this login')
+      const ok = await requireAuth('edit this login')
       if (!ok) return null
       return vaultStore.updateLogin(id, patch)
     }
@@ -346,14 +455,14 @@ export function registerVaultIpcHandlers(): void {
   ipcMain.handle(
     'vault:updateRecoveryCode',
     async (_e, id: string, patch: { service: string; codes: string[]; notes?: string }) => {
-      const ok = await biometricGate('edit these recovery codes')
+      const ok = await requireAuth('edit these recovery codes')
       if (!ok) return null
       return vaultStore.updateRecoveryCode(id, patch)
     }
   )
 
   ipcMain.handle('vault:updateSecureNote', async (_e, id: string, patch: { title: string; content: string }) => {
-    const ok = await biometricGate('edit this note')
+    const ok = await requireAuth('edit this note')
     if (!ok) return null
     return vaultStore.updateSecureNote(id, patch)
   })
@@ -369,21 +478,21 @@ export function registerVaultIpcHandlers(): void {
   ipcMain.handle('vault:hasRecovery', () => vaultStore.hasRecovery())
 
   ipcMain.handle('vault:setupRecovery', async (_e, passphrase: string) => {
-    const ok = await biometricGate('set up emergency recovery access')
+    const ok = await requireAuth('set up emergency recovery access')
     if (!ok) return false
     await vaultStore.setupRecovery(passphrase)
     return true
   })
 
   ipcMain.handle('vault:clearRecovery', async () => {
-    const ok = await biometricGate('turn off emergency recovery access')
+    const ok = await requireAuth('turn off emergency recovery access')
     if (!ok) return false
     await vaultStore.clearRecovery()
     return true
   })
 
   ipcMain.handle('vault:exportRecoveryKit', async () => {
-    const ok = await biometricGate('view your recovery kit')
+    const ok = await requireAuth('view your recovery kit')
     if (!ok) return null
     return vaultStore.exportRecoveryKit()
   })
@@ -401,4 +510,145 @@ export function registerVaultIpcHandlers(): void {
 
   // Best-effort local automation, not a secret — never gated.
   ipcMain.handle('vault:getFrontmostChromeTabUrl', () => getFrontmostChromeTabUrl())
+  ipcMain.handle('vault:getFrontmostBrowserTabUrl', () => getFrontmostBrowserTabUrl())
+
+  ipcMain.handle('vault:getTotpCode', async (_e, id: string) => {
+    const ok = await requireAuth('view this one-time code')
+    if (!ok) return null
+    try {
+      return vaultStore.getTotpCode(id)
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle('vault:copyTotpCode', async (_e, id: string) => {
+    const ok = await requireAuth('copy this one-time code')
+    if (!ok) return false
+    try {
+      const result = vaultStore.getTotpCode(id)
+      if (!result) return false
+      copyWithAutoClear(result.code)
+      return true
+    } catch {
+      return false
+    }
+  })
+
+  ipcMain.handle('vault:revealTotpSecret', async (_e, id: string) => {
+    const ok = await requireAuth('view this authenticator secret')
+    if (!ok) return null
+    return vaultStore.getTotpSecret(id)
+  })
+
+  ipcMain.handle('vault:listTrash', () => vaultStore.listTrash())
+  ipcMain.handle('vault:restoreTrashItem', (_e, kind: TrashKind, id: string) =>
+    vaultStore.restoreTrashItem(kind, id)
+  )
+  ipcMain.handle('vault:permanentlyDeleteTrashItem', async (_e, kind: TrashKind, id: string) => {
+    const ok = await requireAuth('permanently delete this item')
+    if (!ok) return false
+    await vaultStore.permanentlyDeleteTrashItem(kind, id)
+    return true
+  })
+  ipcMain.handle('vault:emptyTrash', async () => {
+    const ok = await requireAuth('empty the trash')
+    if (!ok) return -1
+    return vaultStore.emptyTrash()
+  })
+
+  ipcMain.handle('vault:getStorageInfo', () => vaultStore.getStorageInfo())
+
+  ipcMain.handle('vault:backupVault', async () => {
+    const ok = await requireAuth('back up your vault')
+    if (!ok) return { success: false as const, error: 'Authentication cancelled' }
+
+    const win = BrowserWindow.getFocusedWindow()
+    const stamp = new Date().toISOString().slice(0, 10)
+    const options: Electron.SaveDialogOptions = {
+      title: 'Back up Vaultic vault',
+      defaultPath: `Vaultic-backup-${stamp}.enc`,
+      filters: [{ name: 'Vaultic vault', extensions: ['enc'] }]
+    }
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return { success: false as const, error: 'Cancelled' }
+
+    try {
+      const paths = await vaultStore.backupVault(result.filePath)
+      return { success: true as const, ...paths }
+    } catch (err) {
+      return { success: false as const, error: err instanceof Error ? err.message : 'Backup failed' }
+    }
+  })
+
+  ipcMain.handle('vault:pickVaultBackup', async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    const options: Electron.OpenDialogOptions = {
+      title: 'Choose a Vaultic backup',
+      properties: ['openFile'],
+      filters: [{ name: 'Vaultic vault', extensions: ['enc'] }]
+    }
+    const pick = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+    if (pick.canceled || pick.filePaths.length === 0) return null
+    return pick.filePaths[0]
+  })
+
+  ipcMain.handle('vault:restoreVault', async (_e, sourcePath: string, masterPassword: string) => {
+    const ok = await requireAuth('restore a vault backup')
+    if (!ok) return { success: false as const, error: 'Authentication cancelled' }
+    if (typeof sourcePath !== 'string' || typeof masterPassword !== 'string') {
+      return { success: false as const, error: 'Invalid restore request' }
+    }
+
+    try {
+      await vaultStore.restoreVaultFromBackup(sourcePath, masterPassword)
+      await clearCachedKey()
+      for (const w of BrowserWindow.getAllWindows()) {
+        w.webContents.send('vault:autoLocked')
+      }
+      return { success: true as const }
+    } catch (err) {
+      return {
+        success: false as const,
+        error: err instanceof Error ? err.message : 'Restore failed — wrong password or corrupt file'
+      }
+    }
+  })
+
+  ipcMain.handle(
+    'vault:changeMasterPassword',
+    async (_e, currentPassword: string, newPassword: string, recoveryPassphrase?: string | null) => {
+      const ok = await requireAuth('change your master password')
+      if (!ok) return { success: false as const, error: 'Authentication cancelled' }
+      try {
+        const result = await vaultStore.changeMasterPassword(
+          currentPassword,
+          newPassword,
+          recoveryPassphrase
+        )
+        const key = vaultStore.getRawKey()
+        if (key) await cacheKey(key)
+        return { success: true as const, recoveryCleared: result.recoveryCleared }
+      } catch (err) {
+        return {
+          success: false as const,
+          error: err instanceof Error ? err.message : 'Could not change password'
+        }
+      }
+    }
+  )
+
+  ipcMain.handle('vault:getAppInfo', () => ({
+    name: app.getName(),
+    version: app.getVersion()
+  }))
+
+  ipcMain.handle('vault:checkForUpdates', () => {
+    const version = app.getVersion()
+    return {
+      status: 'manual' as const,
+      version,
+      message: `You're running Vaultic ${version}. Updates are installed manually via a new build — no auto-updater is configured yet.`
+    }
+  })
 }

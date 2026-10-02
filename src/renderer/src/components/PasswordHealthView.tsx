@@ -40,6 +40,7 @@ export function PasswordHealthView(): JSX.Element {
 
   useEffect(() => {
     let cancelled = false
+    setLoadingAnalysis(true)
     window.vaultAPI.analyzePasswords().then((result) => {
       if (!cancelled) {
         setAnalysis(result)
@@ -49,7 +50,7 @@ export function PasswordHealthView(): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [logins])
 
   const byId = useMemo(() => new Map(analysis.map((a) => [a.id, a])), [analysis])
   const rows = useMemo(

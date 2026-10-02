@@ -1,13 +1,23 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
+import { useToastStore } from '../stores/toast-store'
+import { useEscapeKey } from '../lib/use-escape-key'
 import type { CsvLoginRow } from '../../../preload/api-types'
 
 interface ImportLoginsModalProps {
   onClose: () => void
 }
 
+function loginKey(service: string, username: string): string {
+  return `${service.trim().toLowerCase()}\0${username.trim().toLowerCase()}`
+}
+
 export function ImportLoginsModal({ onClose }: ImportLoginsModalProps): JSX.Element {
+  const logins = useVaultStore((s) => s.logins)
   const refresh = useVaultStore((s) => s.refresh)
+  const push = useToastStore((s) => s.push)
+  useEscapeKey(onClose)
+
   const [filePath, setFilePath] = useState<string | null>(null)
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
@@ -15,6 +25,19 @@ export function ImportLoginsModal({ onClose }: ImportLoginsModalProps): JSX.Elem
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [deleteAfterImport, setDeleteAfterImport] = useState(true)
   const [importing, setImporting] = useState(false)
+
+  const existingKeys = useMemo(
+    () => new Set(logins.map((l) => loginKey(l.service, l.username))),
+    [logins]
+  )
+
+  const duplicateIndexes = useMemo(() => {
+    const dups = new Set<number>()
+    rows.forEach((row, i) => {
+      if (existingKeys.has(loginKey(row.service, row.username))) dups.add(i)
+    })
+    return dups
+  }, [rows, existingKeys])
 
   async function handlePickAndParse(): Promise<void> {
     const picked = await window.vaultAPI.pickCsvFile()
@@ -25,7 +48,15 @@ export function ImportLoginsModal({ onClose }: ImportLoginsModalProps): JSX.Elem
     try {
       const parsed = await window.vaultAPI.parseLoginsCsv(picked)
       setRows(parsed)
-      setSelected(new Set(parsed.map((_, i) => i)))
+      // Pre-select non-duplicates only.
+      const existing = new Set(logins.map((l) => loginKey(l.service, l.username)))
+      setSelected(
+        new Set(
+          parsed
+            .map((row, i) => (existing.has(loginKey(row.service, row.username)) ? -1 : i))
+            .filter((i) => i >= 0)
+        )
+      )
     } catch (err) {
       setParseError(err instanceof Error ? err.message : 'Could not read that file.')
       setRows([])
@@ -47,13 +78,29 @@ export function ImportLoginsModal({ onClose }: ImportLoginsModalProps): JSX.Elem
     setImporting(true)
     try {
       const entries = rows.filter((_, i) => selected.has(i))
-      if (entries.length > 0) {
-        await window.vaultAPI.addLogins(entries)
+      const unique = entries.filter((row) => !existingKeys.has(loginKey(row.service, row.username)))
+      const skippedSelectedDuplicates = entries.length - unique.length
+
+      if (unique.length > 0) {
+        await window.vaultAPI.addLogins(unique)
         await refresh()
       }
+
       if (deleteAfterImport && filePath) {
         await window.vaultAPI.deleteFile(filePath)
       }
+
+      if (unique.length === 0 && skippedSelectedDuplicates > 0) {
+        push('Nothing new to import — selected logins already exist', 'info')
+      } else if (skippedSelectedDuplicates > 0) {
+        push(
+          `Imported ${unique.length}, skipped ${skippedSelectedDuplicates} duplicate${skippedSelectedDuplicates === 1 ? '' : 's'}`,
+          'success'
+        )
+      } else if (unique.length > 0) {
+        push(`Imported ${unique.length} login${unique.length === 1 ? '' : 's'}`, 'success')
+      }
+
       onClose()
     } finally {
       setImporting(false)
@@ -61,6 +108,7 @@ export function ImportLoginsModal({ onClose }: ImportLoginsModalProps): JSX.Elem
   }
 
   const totalSelected = selected.size
+  const duplicateCount = duplicateIndexes.size
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -70,7 +118,7 @@ export function ImportLoginsModal({ onClose }: ImportLoginsModalProps): JSX.Elem
       >
         <h2 className="mb-1 text-sm font-semibold">Import logins from Chrome (or any browser)</h2>
         <p className="mb-3 text-xs text-vt-muted">
-          Chrome keeps saved passwords encrypted for its own use only, so there's no direct read — export them
+          Chrome keeps saved passwords encrypted for its own use only, so there&apos;s no direct read — export them
           first: open <span className="font-mono text-vt-teal">chrome://password-manager/passwords</span>, click the
           ⋮ menu → <span className="text-vt-text">Export passwords</span>, and authenticate with Touch ID or your
           Mac password. That saves a CSV file (usually to Downloads) — pick it below.
@@ -90,20 +138,36 @@ export function ImportLoginsModal({ onClose }: ImportLoginsModalProps): JSX.Elem
         {parseError && <p className="text-xs text-vt-danger">{parseError}</p>}
 
         {!parsing && rows.length > 0 && (
-          <div className="flex-1 overflow-y-auto rounded-lg border border-vt-border">
-            {rows.map((row, i) => (
-              <label
-                key={i}
-                className="flex items-center gap-2 border-b border-vt-border px-3 py-2 text-xs last:border-b-0"
-              >
-                <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} />
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-vt-text">{row.service}</p>
-                  <p className="truncate text-vt-muted">{row.username}</p>
-                </div>
-              </label>
-            ))}
-          </div>
+          <>
+            {duplicateCount > 0 && (
+              <p className="mb-2 text-xs text-vt-muted">
+                {duplicateCount} already in your vault (unchecked by default). Duplicates are matched by service +
+                username.
+              </p>
+            )}
+            <div className="flex-1 overflow-y-auto rounded-lg border border-vt-border">
+              {rows.map((row, i) => {
+                const isDup = duplicateIndexes.has(i)
+                return (
+                  <label
+                    key={i}
+                    className="flex items-center gap-2 border-b border-vt-border px-3 py-2 text-xs last:border-b-0"
+                  >
+                    <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-vt-text">{row.service}</p>
+                      <p className="truncate text-vt-muted">{row.username || '(no username)'}</p>
+                    </div>
+                    {isDup && (
+                      <span className="shrink-0 rounded-full border border-vt-border px-1.5 py-0.5 text-[10px] text-vt-muted">
+                        exists
+                      </span>
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+          </>
         )}
 
         {!parsing && filePath && rows.length === 0 && !parseError && (
@@ -117,12 +181,15 @@ export function ImportLoginsModal({ onClose }: ImportLoginsModalProps): JSX.Elem
               checked={deleteAfterImport}
               onChange={(e) => setDeleteAfterImport(e.target.checked)}
             />
-            Delete this CSV file after import (recommended — it's plaintext)
+            Delete this CSV file after import (recommended — it&apos;s plaintext)
           </label>
         )}
 
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2"
+          >
             Cancel
           </button>
           <button

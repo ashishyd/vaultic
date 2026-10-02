@@ -7,8 +7,19 @@ const vaultAPI: VaultAPI = {
   create: (masterPassword) => ipcRenderer.invoke('vault:create', masterPassword),
   unlock: (masterPassword) => ipcRenderer.invoke('vault:unlock', masterPassword),
   canUseBiometrics: () => ipcRenderer.invoke('vault:canUseBiometrics'),
+  hasCachedKey: () => ipcRenderer.invoke('vault:hasCachedKey'),
+  clearCachedKey: () => ipcRenderer.invoke('vault:clearCachedKey'),
   unlockWithBiometrics: () => ipcRenderer.invoke('vault:unlockWithBiometrics'),
   lock: () => ipcRenderer.invoke('vault:lock'),
+
+  confirmMasterPassword: (requestId, password) =>
+    ipcRenderer.invoke('vault:confirmMasterPassword', requestId, password),
+  onNeedMasterPassword: (callback) => {
+    const listener = (_event: unknown, request: { requestId: string; reason: string }): void =>
+      callback(request)
+    ipcRenderer.on('vault:needMasterPassword', listener)
+    return () => ipcRenderer.removeListener('vault:needMasterPassword', listener)
+  },
 
   listApiKeys: () => ipcRenderer.invoke('vault:listApiKeys'),
   listLogins: () => ipcRenderer.invoke('vault:listLogins'),
@@ -40,7 +51,7 @@ const vaultAPI: VaultAPI = {
   revealSecureNoteContent: (id) => ipcRenderer.invoke('vault:revealSecureNoteContent', id),
   copyApiKeyValue: (id) => ipcRenderer.invoke('vault:copyApiKeyValue', id),
   copyLoginPassword: (id) => ipcRenderer.invoke('vault:copyLoginPassword', id),
-  copyRecoveryCode: (code) => ipcRenderer.invoke('vault:copyRecoveryCode', code),
+  copyRecoveryCode: (id, index) => ipcRenderer.invoke('vault:copyRecoveryCode', id, index),
   copySecureNoteContent: (id) => ipcRenderer.invoke('vault:copySecureNoteContent', id),
   exportLoginsCsv: (ids) => ipcRenderer.invoke('vault:exportLoginsCsv', ids),
 
@@ -72,6 +83,26 @@ const vaultAPI: VaultAPI = {
 
   setLoginFavorite: (id, favorite) => ipcRenderer.invoke('vault:setLoginFavorite', id, favorite),
 
+  getTotpCode: (id) => ipcRenderer.invoke('vault:getTotpCode', id),
+  copyTotpCode: (id) => ipcRenderer.invoke('vault:copyTotpCode', id),
+  revealTotpSecret: (id) => ipcRenderer.invoke('vault:revealTotpSecret', id),
+
+  listTrash: () => ipcRenderer.invoke('vault:listTrash'),
+  restoreTrashItem: (kind, id) => ipcRenderer.invoke('vault:restoreTrashItem', kind, id),
+  permanentlyDeleteTrashItem: (kind, id) => ipcRenderer.invoke('vault:permanentlyDeleteTrashItem', kind, id),
+  emptyTrash: () => ipcRenderer.invoke('vault:emptyTrash'),
+
+  getStorageInfo: () => ipcRenderer.invoke('vault:getStorageInfo'),
+  backupVault: () => ipcRenderer.invoke('vault:backupVault'),
+  pickVaultBackup: () => ipcRenderer.invoke('vault:pickVaultBackup'),
+  restoreVault: (sourcePath, masterPassword) =>
+    ipcRenderer.invoke('vault:restoreVault', sourcePath, masterPassword),
+  changeMasterPassword: (currentPassword, newPassword, recoveryPassphrase) =>
+    ipcRenderer.invoke('vault:changeMasterPassword', currentPassword, newPassword, recoveryPassphrase),
+
+  getAppInfo: () => ipcRenderer.invoke('vault:getAppInfo'),
+  checkForUpdates: () => ipcRenderer.invoke('vault:checkForUpdates'),
+
   listLabels: () => ipcRenderer.invoke('vault:listLabels'),
   addLabel: (name, color) => ipcRenderer.invoke('vault:addLabel', name, color),
   updateLabel: (id, patch) => ipcRenderer.invoke('vault:updateLabel', id, patch),
@@ -93,7 +124,8 @@ const vaultAPI: VaultAPI = {
   exportRecoveryKit: () => ipcRenderer.invoke('vault:exportRecoveryKit'),
   unlockWithRecovery: (passphrase) => ipcRenderer.invoke('vault:unlockWithRecovery', passphrase),
 
-  getFrontmostChromeTabUrl: () => ipcRenderer.invoke('vault:getFrontmostChromeTabUrl')
+  getFrontmostChromeTabUrl: () => ipcRenderer.invoke('vault:getFrontmostChromeTabUrl'),
+  getFrontmostBrowserTabUrl: () => ipcRenderer.invoke('vault:getFrontmostBrowserTabUrl')
 }
 
 contextBridge.exposeInMainWorld('vaultAPI', vaultAPI)

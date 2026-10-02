@@ -18,7 +18,42 @@ export interface LoginSummary {
   updatedAt: number
   favorite: boolean
   labelIds: string[]
+  hasTotp: boolean
 }
+
+export type TrashKind = 'key' | 'login' | 'recovery' | 'note'
+
+export interface TrashItem {
+  kind: TrashKind
+  id: string
+  title: string
+  subtitle: string
+  deletedAt: number
+  expiresAt: number
+}
+
+export interface StorageInfo {
+  vaultPath: string
+  vaultBytes: number
+  recoveryEnabled: boolean
+  trashCount: number
+  retentionDays: number
+  counts: {
+    apiKeys: number
+    logins: number
+    recoveryCodes: number
+    secureNotes: number
+  }
+}
+
+export interface AppInfo {
+  name: string
+  version: string
+}
+
+export type UpdateCheckResult =
+  | { status: 'current'; version: string; message: string }
+  | { status: 'manual'; version: string; message: string }
 
 export interface LabelSummary {
   id: string
@@ -119,6 +154,7 @@ export interface VaultAPI {
     password: string
     url?: string
     notes?: string
+    totpSecret?: string
   }) => Promise<LoginSummary>
   addLogins: (
     entries: Array<{ service: string; username: string; password: string; url?: string; notes?: string }>
@@ -140,14 +176,32 @@ export interface VaultAPI {
   restoreRecoveryCode: (id: string) => Promise<void>
   restoreSecureNote: (id: string) => Promise<void>
 
-  // Biometric-gated (falls back to allowed-through when no Touch ID is available).
+  /** True when a vault key is cached in the macOS Keychain for Touch ID unlock. */
+  hasCachedKey: () => Promise<boolean>
+  /** Removes the Keychain-cached vault key. Next unlock requires the master password. */
+  clearCachedKey: () => Promise<boolean>
+
+  /**
+   * Completes a master-password re-prompt from the main process (Touch ID unavailable).
+   * Pass null to cancel. Wrong passwords return ok: false without closing the request.
+   */
+  confirmMasterPassword: (
+    requestId: string,
+    password: string | null
+  ) => Promise<{ ok: boolean; error?: string }>
+  /** Subscribe to master-password re-prompt requests. Returns unsubscribe. */
+  onNeedMasterPassword: (
+    callback: (request: { requestId: string; reason: string }) => void
+  ) => () => void
+
+  // Biometric-gated (falls back to master-password re-prompt when Touch ID isn't available).
   revealApiKeyValue: (id: string) => Promise<string | null>
   revealLoginPassword: (id: string) => Promise<string | null>
   revealRecoveryCodes: (id: string) => Promise<string[] | null>
   revealSecureNoteContent: (id: string) => Promise<string | null>
   copyApiKeyValue: (id: string) => Promise<boolean>
   copyLoginPassword: (id: string) => Promise<boolean>
-  copyRecoveryCode: (code: string) => Promise<boolean>
+  copyRecoveryCode: (id: string, index: number) => Promise<boolean>
   copySecureNoteContent: (id: string) => Promise<boolean>
   exportLoginsCsv: (ids: string[]) => Promise<{ success: boolean; filePath?: string }>
 
@@ -181,7 +235,14 @@ export interface VaultAPI {
   ) => Promise<ApiKeySummary | null>
   updateLogin: (
     id: string,
-    patch: { service: string; username: string; password: string; url?: string; notes?: string }
+    patch: {
+      service: string
+      username: string
+      password: string
+      url?: string
+      notes?: string
+      totpSecret?: string | null
+    }
   ) => Promise<LoginSummary | null>
   updateRecoveryCode: (
     id: string,
@@ -190,6 +251,33 @@ export interface VaultAPI {
   updateSecureNote: (id: string, patch: { title: string; content: string }) => Promise<SecureNoteSummary | null>
 
   setLoginFavorite: (id: string, favorite: boolean) => Promise<LoginSummary>
+
+  /** Biometric-gated TOTP helpers — secret never leaves main process. */
+  getTotpCode: (id: string) => Promise<{ code: string; remainingSeconds: number } | null>
+  copyTotpCode: (id: string) => Promise<boolean>
+  /** Reveal the raw TOTP secret for editing (gated). */
+  revealTotpSecret: (id: string) => Promise<string | null>
+
+  listTrash: () => Promise<TrashItem[]>
+  restoreTrashItem: (kind: TrashKind, id: string) => Promise<void>
+  permanentlyDeleteTrashItem: (kind: TrashKind, id: string) => Promise<boolean>
+  emptyTrash: () => Promise<number>
+
+  getStorageInfo: () => Promise<StorageInfo>
+  backupVault: () => Promise<{ success: boolean; vaultPath?: string; recoveryPath?: string; error?: string }>
+  pickVaultBackup: () => Promise<string | null>
+  restoreVault: (
+    sourcePath: string,
+    masterPassword: string
+  ) => Promise<{ success: boolean; error?: string }>
+  changeMasterPassword: (
+    currentPassword: string,
+    newPassword: string,
+    recoveryPassphrase?: string | null
+  ) => Promise<{ success: boolean; recoveryCleared?: boolean; error?: string }>
+
+  getAppInfo: () => Promise<AppInfo>
+  checkForUpdates: () => Promise<UpdateCheckResult>
 
   listLabels: () => Promise<LabelSummary[]>
   addLabel: (name: string, color?: string) => Promise<LabelSummary>
@@ -213,4 +301,5 @@ export interface VaultAPI {
 
   // Best-effort local automation (AppleScript), not a secret — never gated.
   getFrontmostChromeTabUrl: () => Promise<string | null>
+  getFrontmostBrowserTabUrl: () => Promise<{ url: string; browser: string } | null>
 }

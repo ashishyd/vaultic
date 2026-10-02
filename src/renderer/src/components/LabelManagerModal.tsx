@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 import { useToastStore } from '../stores/toast-store'
 import { ConfirmDialog } from './ConfirmDialog'
+import { useEscapeKey } from '../lib/use-escape-key'
 
 interface LabelManagerModalProps {
   onClose: () => void
@@ -30,6 +31,8 @@ export function LabelManagerModal({ onClose }: LabelManagerModalProps): JSX.Elem
   const [editColor, setEditColor] = useState('')
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
   const [saving, setSaving] = useState(false)
+
+  useEscapeKey(onClose, !pendingDelete)
 
   async function handleAdd(): Promise<void> {
     if (!newName.trim()) return

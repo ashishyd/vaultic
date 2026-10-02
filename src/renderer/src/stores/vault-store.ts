@@ -7,13 +7,15 @@ import type {
   SecureNoteSummary
 } from '../../../preload/api-types'
 
-export type Section = 'keys' | 'logins' | 'recovery' | 'notes' | 'analysis'
+export type Section = 'keys' | 'logins' | 'recovery' | 'notes' | 'analysis' | 'trash'
 
 interface VaultUIState {
   unlocked: boolean
   hasVault: boolean
   section: Section
   search: string
+  /** Bumped to ask PageHeader to focus the search field. */
+  focusSearchToken: number
   apiKeys: ApiKeySummary[]
   logins: LoginSummary[]
   labels: LabelSummary[]
@@ -23,6 +25,7 @@ interface VaultUIState {
   setHasVault: (v: boolean) => void
   setSection: (s: Section) => void
   setSearch: (q: string) => void
+  requestFocusSearch: () => void
   refresh: () => Promise<void>
 }
 
@@ -31,6 +34,7 @@ export const useVaultStore = create<VaultUIState>((set) => ({
   hasVault: false,
   section: 'keys',
   search: '',
+  focusSearchToken: 0,
   apiKeys: [],
   logins: [],
   labels: [],
@@ -40,6 +44,7 @@ export const useVaultStore = create<VaultUIState>((set) => ({
   setHasVault: (v) => set({ hasVault: v }),
   setSection: (s) => set({ section: s, search: '' }),
   setSearch: (q) => set({ search: q }),
+  requestFocusSearch: () => set((s) => ({ focusSearchToken: s.focusSearchToken + 1 })),
   refresh: async () => {
     const [apiKeys, logins, labels, recoveryCodes, secureNotes] = await Promise.all([
       window.vaultAPI.listApiKeys(),

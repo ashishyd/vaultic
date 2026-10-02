@@ -5,6 +5,9 @@ directories:
 files:
   - out/**/*
   - '!**/.vscode/*'
+extraResources:
+  - from: build/icon.png
+    to: icon.png
 mac:
   category: public.app-category.utilities
   icon: build/icon.icns

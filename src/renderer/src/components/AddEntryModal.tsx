@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 import type { Section } from '../stores/vault-store'
+import { useEscapeKey } from '../lib/use-escape-key'
 
 interface AddEntryModalProps {
   section: Section
@@ -34,6 +35,7 @@ function parseBulkLoginsText(text: string): Array<{ service: string; username: s
 
 export function AddEntryModal({ section, onClose }: AddEntryModalProps): JSX.Element {
   const refresh = useVaultStore((s) => s.refresh)
+  useEscapeKey(onClose)
 
   const [project, setProject] = useState('')
   const [name, setName] = useState('')
@@ -43,10 +45,23 @@ export function AddEntryModal({ section, onClose }: AddEntryModalProps): JSX.Ele
   const [password, setPassword] = useState('')
   const [url, setUrl] = useState('')
   const [notes, setNotes] = useState('')
+  const [totpSecret, setTotpSecret] = useState('')
   const [bulkText, setBulkText] = useState('')
   const [mode, setMode] = useState<'single' | 'bulk'>('single')
   const [saving, setSaving] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  async function handleGenerate(target: 'password' | 'value'): Promise<void> {
+    setGenerating(true)
+    try {
+      const generated = await window.vaultAPI.generateStrongPassword()
+      if (target === 'password') setPassword(generated)
+      else setValue(generated)
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   async function handleSave(): Promise<void> {
     setError(null)
@@ -81,7 +96,12 @@ export function AddEntryModal({ section, onClose }: AddEntryModalProps): JSX.Ele
             setError('Project, name, and value are required.')
             return
           }
-          await window.vaultAPI.addApiKey({ project: project.trim(), name: name.trim(), value: value.trim(), notes: notes.trim() || undefined })
+          await window.vaultAPI.addApiKey({
+            project: project.trim(),
+            name: name.trim(),
+            value: value.trim(),
+            notes: notes.trim() || undefined
+          })
         }
       } else if (mode === 'bulk') {
         const entries = parseBulkLoginsText(bulkText)
@@ -91,8 +111,8 @@ export function AddEntryModal({ section, onClose }: AddEntryModalProps): JSX.Ele
         }
         await window.vaultAPI.addLogins(entries)
       } else {
-        if (!service.trim() || !username.trim() || !password.trim()) {
-          setError('Service, username, and password are required.')
+        if (!service.trim() || !password.trim()) {
+          setError('Service and password are required.')
           return
         }
         await window.vaultAPI.addLogin({
@@ -100,11 +120,14 @@ export function AddEntryModal({ section, onClose }: AddEntryModalProps): JSX.Ele
           username: username.trim(),
           password: password.trim(),
           url: url.trim() || undefined,
-          notes: notes.trim() || undefined
+          notes: notes.trim() || undefined,
+          totpSecret: totpSecret.trim() || undefined
         })
       }
       await refresh()
       onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save.')
     } finally {
       setSaving(false)
     }
@@ -116,9 +139,7 @@ export function AddEntryModal({ section, onClose }: AddEntryModalProps): JSX.Ele
         className="w-full max-w-md rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-sm font-semibold">
-          Add {section === 'keys' ? 'API Key' : 'Login'}
-        </h2>
+        <h2 className="mb-4 text-sm font-semibold">Add {section === 'keys' ? 'API Key' : 'Login'}</h2>
 
         <div className="mb-3 flex gap-1 rounded-lg bg-vt-surface2 p-1 text-xs">
           <button
@@ -142,7 +163,15 @@ export function AddEntryModal({ section, onClose }: AddEntryModalProps): JSX.Ele
               {mode === 'single' ? (
                 <>
                   <Field label="Key name" value={name} onChange={setName} placeholder="ANTHROPIC_API_KEY" />
-                  <Field label="Value" value={value} onChange={setValue} placeholder="sk-..." mono />
+                  <Field
+                    label="Value"
+                    value={value}
+                    onChange={setValue}
+                    placeholder="sk-..."
+                    mono
+                    onGenerate={() => void handleGenerate('value')}
+                    generating={generating}
+                  />
                   <Field label="Notes (optional)" value={notes} onChange={setNotes} />
                 </>
               ) : (
@@ -161,9 +190,29 @@ export function AddEntryModal({ section, onClose }: AddEntryModalProps): JSX.Ele
           ) : mode === 'single' ? (
             <>
               <Field label="Service" value={service} onChange={setService} placeholder="e.g. GitHub" />
-              <Field label="Username / email" value={username} onChange={setUsername} />
-              <Field label="Password" value={password} onChange={setPassword} mono type="password" />
+              <Field
+                label="Username / email (optional)"
+                value={username}
+                onChange={setUsername}
+                placeholder="Leave blank for file passwords"
+              />
+              <Field
+                label="Password"
+                value={password}
+                onChange={setPassword}
+                mono
+                type="password"
+                onGenerate={() => void handleGenerate('password')}
+                generating={generating}
+              />
               <Field label="URL (optional)" value={url} onChange={setUrl} placeholder="https://" />
+              <Field
+                label="TOTP secret (optional)"
+                value={totpSecret}
+                onChange={setTotpSecret}
+                placeholder="Base32 or otpauth://…"
+                mono
+              />
               <Field label="Notes (optional)" value={notes} onChange={setNotes} />
             </>
           ) : (
@@ -176,7 +225,9 @@ export function AddEntryModal({ section, onClose }: AddEntryModalProps): JSX.Ele
                 onChange={(e) => setBulkText(e.target.value)}
                 rows={8}
                 className="w-full rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2 font-mono text-xs outline-none focus:border-vt-teal"
-                placeholder={'GitHub: myuser / mypassword123\nGmail: me@gmail.com / anotherpassword\nBackup Archive: mypassphrase'}
+                placeholder={
+                  'GitHub: myuser / mypassword123\nGmail: me@gmail.com / anotherpassword\nBackup Archive: mypassphrase'
+                }
               />
               <p className="mt-1 text-[11px] text-vt-muted">
                 Format: Name: username / password — or Name: password when there&apos;s no username (e.g. an
@@ -188,7 +239,10 @@ export function AddEntryModal({ section, onClose }: AddEntryModalProps): JSX.Ele
           {error && <p className="text-xs text-vt-danger">{error}</p>}
 
           <div className="mt-2 flex justify-end gap-2">
-            <button onClick={onClose} className="rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2">
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2"
+            >
               Cancel
             </button>
             <button
@@ -211,7 +265,9 @@ function Field({
   onChange,
   placeholder,
   mono,
-  type = 'text'
+  type = 'text',
+  onGenerate,
+  generating
 }: {
   label: string
   value: string
@@ -219,10 +275,24 @@ function Field({
   placeholder?: string
   mono?: boolean
   type?: string
+  onGenerate?: () => void
+  generating?: boolean
 }): JSX.Element {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-vt-muted">{label}</label>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <label className="block text-xs font-medium text-vt-muted">{label}</label>
+        {onGenerate && (
+          <button
+            type="button"
+            onClick={onGenerate}
+            disabled={generating}
+            className="text-[11px] font-medium text-vt-teal hover:underline disabled:opacity-50"
+          >
+            {generating ? 'Generating…' : 'Generate'}
+          </button>
+        )}
+      </div>
       <input
         type={type}
         value={value}

@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerVaultIpcHandlers } from './vault/ipc-handlers'
 import { vaultStore } from './vault/vault-store'
 import { readSettings } from './vault/settings'
+import { setupTrayAndHotkey } from './tray'
 
 const IDLE_CHECK_INTERVAL_MS = 10_000
 
@@ -65,6 +66,7 @@ app.whenReady().then(() => {
   registerVaultIpcHandlers()
   createWindow()
   startAutoLockWatcher()
+  setupTrayAndHotkey()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -72,5 +74,6 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  // Keep running in the tray on macOS.
   if (process.platform !== 'darwin') app.quit()
 })
