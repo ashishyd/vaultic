@@ -1,6 +1,6 @@
-import { ipcMain, clipboard, dialog, BrowserWindow, app } from 'electron'
+import { ipcMain, clipboard, dialog, BrowserWindow, app, shell } from 'electron'
 import { unlink, writeFile } from 'fs/promises'
-import { resolve as resolvePath } from 'path'
+import { resolve as resolvePath, join } from 'path'
 import { randomUUID } from 'crypto'
 import { vaultStore, type TrashKind } from './vault-store'
 import { cacheKey, readCachedKey, clearCachedKey, hasCachedKey } from './keychain'
@@ -11,6 +11,8 @@ import { analyzeLogins, generateStrongPassword } from './password-strength'
 import { suggestLabelsWithAi, detectAvailableCli } from './ai-cli'
 import { readSettings, writeSettings, type AppSettings } from './settings'
 import { getFrontmostChromeTabUrl, getFrontmostBrowserTabUrl } from './chrome'
+import { getBridgeInfo } from './browser-bridge'
+import { installNativeMessagingHost, getNativeHostInstallInfo } from './native-host-install'
 
 const CLIPBOARD_CLEAR_MS = 30_000
 const MASTER_PASSWORD_PROMPT_TIMEOUT_MS = 5 * 60 * 1000
@@ -650,5 +652,21 @@ export function registerVaultIpcHandlers(): void {
       version,
       message: `You're running Vaultic ${version}. Updates are installed manually via a new build — no auto-updater is configured yet.`
     }
+  })
+
+  ipcMain.handle('vault:getBridgeInfo', () => getBridgeInfo())
+  ipcMain.handle('vault:getNativeHostInfo', () => getNativeHostInstallInfo())
+  ipcMain.handle('vault:installNativeHost', () => installNativeMessagingHost())
+  ipcMain.handle('vault:openExtensionFolder', async () => {
+    const candidates = [
+      join(app.getAppPath(), 'extension'),
+      join(process.resourcesPath, 'extension'),
+      join(__dirname, '../../../extension')
+    ]
+    const { existsSync } = await import('fs')
+    const folder = candidates.find((c) => existsSync(c))
+    if (!folder) return { ok: false as const, error: 'Extension folder not found' }
+    shell.showItemInFolder(folder)
+    return { ok: true as const, path: folder }
   })
 }

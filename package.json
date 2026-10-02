@@ -12,7 +12,8 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "dist:mac": "electron-vite build && electron-builder --mac && node scripts/install-to-applications.mjs"
+    "dist:mac": "electron-vite build && electron-builder --mac && node scripts/install-to-applications.mjs",
+    "extension:open": "open -a 'Google Chrome' chrome://extensions && open extension"
   },
   "dependencies": {
     "keytar": "^7.9.0",

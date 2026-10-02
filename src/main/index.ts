@@ -5,6 +5,8 @@ import { registerVaultIpcHandlers } from './vault/ipc-handlers'
 import { vaultStore } from './vault/vault-store'
 import { readSettings } from './vault/settings'
 import { setupTrayAndHotkey } from './tray'
+import { startBrowserBridge } from './vault/browser-bridge'
+import { installNativeMessagingHost } from './vault/native-host-install'
 
 const IDLE_CHECK_INTERVAL_MS = 10_000
 
@@ -67,6 +69,9 @@ app.whenReady().then(() => {
   createWindow()
   startAutoLockWatcher()
   setupTrayAndHotkey()
+  startBrowserBridge()
+  // Keep Chrome native-host config in sync with the current bridge token.
+  installNativeMessagingHost()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

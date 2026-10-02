@@ -35,6 +35,8 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
   const [storage, setStorage] = useState<StorageInfo | null>(null)
   const [appVersion, setAppVersion] = useState('')
   const [busy, setBusy] = useState(false)
+  const [bridgeToken, setBridgeToken] = useState('')
+  const [extensionId, setExtensionId] = useState('')
 
   const [showChangePassword, setShowChangePassword] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
@@ -56,13 +58,16 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
       window.vaultAPI.getSettings(),
       window.vaultAPI.hasCachedKey(),
       window.vaultAPI.getStorageInfo(),
-      window.vaultAPI.getAppInfo()
-    ]).then(([settings, cached, info, appInfo]) => {
+      window.vaultAPI.getAppInfo(),
+      window.vaultAPI.getBridgeInfo()
+    ]).then(([settings, cached, info, appInfo, bridge]) => {
       if (!cancelled) {
         setAutoLockMinutes(settings.autoLockMinutes)
         setHasCachedKey(cached)
         setStorage(info)
         setAppVersion(appInfo.version)
+        setBridgeToken(bridge.token)
+        setExtensionId(bridge.extensionId)
         setLoading(false)
       }
     })
@@ -185,6 +190,28 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
     push(result.message, 'info')
   }
 
+  async function handleCopyToken(): Promise<void> {
+    if (!bridgeToken) return
+    await window.vaultAPI.copyToClipboard(bridgeToken)
+    push('Bridge token copied (clears in 30s)', 'success')
+  }
+
+  async function handleInstallNativeHost(): Promise<void> {
+    setBusy(true)
+    try {
+      const result = await window.vaultAPI.installNativeHost()
+      if (result.ok) push('Browser bridge installed for Chrome Native Messaging', 'success')
+      else push(result.error ?? 'Install failed', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleOpenExtension(): Promise<void> {
+    const result = await window.vaultAPI.openExtensionFolder()
+    if (!result.ok) push(result.error ?? 'Could not open extension folder', 'error')
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
@@ -276,6 +303,43 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
                   Forget Touch ID unlock…
                 </button>
               )}
+            </div>
+
+            <div className="border-t border-vt-border pt-4">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-vt-muted">Browser extension</h3>
+              <p className="mb-2 text-[11px] text-vt-muted">
+                Fill and save Chrome logins via the Vaultic extension. Keep Vaultic running (unlocked) while you
+                browse.
+              </p>
+              <div className="mb-2 rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wide text-vt-muted">Bridge token</p>
+                <p className="mt-1 break-all font-mono text-[11px] text-vt-teal">{bridgeToken || '…'}</p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => void handleCopyToken()}
+                  className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2"
+                >
+                  Copy bridge token
+                </button>
+                <button
+                  onClick={() => void handleInstallNativeHost()}
+                  disabled={busy}
+                  className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2 disabled:opacity-50"
+                >
+                  Install browser bridge (Native Messaging)
+                </button>
+                <button
+                  onClick={() => void handleOpenExtension()}
+                  className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2"
+                >
+                  Reveal extension folder…
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-vt-muted">
+                Chrome → Extensions → Load unpacked → select the <span className="font-mono">extension</span> folder.
+                Extension ID: <span className="font-mono">{extensionId || '…'}</span>
+              </p>
             </div>
 
             <div className="border-t border-vt-border pt-4">

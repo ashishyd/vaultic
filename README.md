@@ -15,7 +15,8 @@ It exists to solve a specific problem: developers end up with API keys scattered
 - **Command palette** (⌘K) to fuzzy-search everything and copy a value in two keystrokes.
 - **Emergency recovery access** — an optional, independent recovery passphrase (a second keyslot on the same vault key) so a lost master password doesn't mean permanently lost data.
 - **Auto-lock** on inactivity, soft-delete with undo, favorites, and a proactive "N weak / N reused" indicator in the sidebar.
-- **Chrome quick-copy** — grabs the frontmost Chrome tab's URL via AppleScript and copies the matching saved password directly.
+- **Chrome quick-copy** — grabs the frontmost Chrome/Safari/Edge tab's URL via AppleScript and copies the matching saved password directly.
+- **Chrome extension** — fill password fields and save new logins from the browser into your local vault (Native Messaging + localhost bridge; vault stays on your Mac).
 
 ## Security model
 

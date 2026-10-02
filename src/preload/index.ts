@@ -103,6 +103,11 @@ const vaultAPI: VaultAPI = {
   getAppInfo: () => ipcRenderer.invoke('vault:getAppInfo'),
   checkForUpdates: () => ipcRenderer.invoke('vault:checkForUpdates'),
 
+  getBridgeInfo: () => ipcRenderer.invoke('vault:getBridgeInfo'),
+  getNativeHostInfo: () => ipcRenderer.invoke('vault:getNativeHostInfo'),
+  installNativeHost: () => ipcRenderer.invoke('vault:installNativeHost'),
+  openExtensionFolder: () => ipcRenderer.invoke('vault:openExtensionFolder'),
+
   listLabels: () => ipcRenderer.invoke('vault:listLabels'),
   addLabel: (name, color) => ipcRenderer.invoke('vault:addLabel', name, color),
   updateLabel: (id, patch) => ipcRenderer.invoke('vault:updateLabel', id, patch),

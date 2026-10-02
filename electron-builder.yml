@@ -8,6 +8,10 @@ files:
 extraResources:
   - from: build/icon.png
     to: icon.png
+  - from: native-host
+    to: native-host
+  - from: extension
+    to: extension
 mac:
   category: public.app-category.utilities
   icon: build/icon.icns

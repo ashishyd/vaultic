@@ -279,6 +279,23 @@ export interface VaultAPI {
   getAppInfo: () => Promise<AppInfo>
   checkForUpdates: () => Promise<UpdateCheckResult>
 
+  getBridgeInfo: () => Promise<{
+    port: number
+    host: string
+    token: string
+    extensionId: string
+    nativeHostName: string
+  }>
+  getNativeHostInfo: () => Promise<{
+    hostName: string
+    extensionId: string
+    manifestPath: string
+    installed: boolean
+    isDev: boolean
+  }>
+  installNativeHost: () => Promise<{ ok: boolean; path: string; error?: string }>
+  openExtensionFolder: () => Promise<{ ok: boolean; path?: string; error?: string }>
+
   listLabels: () => Promise<LabelSummary[]>
   addLabel: (name: string, color?: string) => Promise<LabelSummary>
   updateLabel: (id: string, patch: { name: string; color: string }) => Promise<LabelSummary>
