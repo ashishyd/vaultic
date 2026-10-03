@@ -53,42 +53,32 @@ async function load() {
     btn.className = 'login'
     btn.innerHTML = `<strong>${escapeHtml(login.service)}</strong><span>${escapeHtml(login.username || '(no username)')}${login.hasTotp ? ' · TOTP' : ''}</span>`
     btn.addEventListener('click', async () => {
+      btn.disabled = true
+      setStatus('Authenticating…', 'warn')
       const unlocked = await chrome.runtime.sendMessage({ type: 'unlockLogin', id: login.id })
       if (!unlocked?.ok) {
+        btn.disabled = false
         setStatus(unlocked?.error === 'auth_declined' ? 'Auth cancelled' : 'Fill failed', 'err')
         return
       }
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: fillPage,
-        args: [unlocked.username || '', unlocked.password || '', unlocked.totp || '']
+      if (!unlocked.password) {
+        btn.disabled = false
+        setStatus('Login has no password saved', 'err')
+        return
+      }
+      // Hand off to the service worker, then close so the page regains focus and
+      // restores password fields (many SSO pages hide them while the popup is open).
+      await chrome.runtime.sendMessage({
+        type: 'scheduleFill',
+        tabId: tab.id,
+        username: unlocked.username || '',
+        password: unlocked.password || '',
+        totp: unlocked.totp || ''
       })
       window.close()
     })
     listEl.appendChild(btn)
   }
-}
-
-function fillPage(username, password, totp) {
-  function setNativeValue(input, value) {
-    const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
-    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set
-    if (setter) setter.call(input, value)
-    else input.value = value
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    input.dispatchEvent(new Event('change', { bubbles: true }))
-  }
-  const passwords = [...document.querySelectorAll('input[type="password"]')].filter((el) => el.offsetParent !== null)
-  const pw = passwords[0]
-  if (!pw) return
-  const scope = pw.form || document
-  const users = [...scope.querySelectorAll('input[type="email"], input[type="text"], input[type="tel"], input[autocomplete="username"], input[autocomplete="email"]')].filter(
-    (el) => el.offsetParent !== null
-  )
-  const user = users.find((el) => pw.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING) || users[0]
-  if (user && username) setNativeValue(user, username)
-  setNativeValue(pw, password)
-  if (totp) navigator.clipboard.writeText(totp).catch(() => {})
 }
 
 function escapeHtml(s) {
