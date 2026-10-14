@@ -7,6 +7,7 @@ import {
   ShieldIcon,
   LifeBuoyIcon,
   NoteIcon,
+  BookmarkIcon,
   AlertTriangleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -23,7 +24,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
-  const { section, setSection, apiKeys, logins, recoveryCodes, secureNotes } = useVaultStore()
+  const { section, setSection, apiKeys, logins, recoveryCodes, secureNotes, bookmarks } = useVaultStore()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [weakCount, setWeakCount] = useState(0)
   const [reusedCount, setReusedCount] = useState(0)
@@ -84,6 +85,7 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
           recoveryCodes.length
         )}
         {navItem(section === 'notes', () => setSection('notes'), <NoteIcon />, 'Secure Notes', secureNotes.length)}
+        {navItem(section === 'bookmarks', () => setSection('bookmarks'), <BookmarkIcon />, 'Bookmarks', bookmarks.length)}
         {navItem(section === 'analysis', () => setSection('analysis'), <ShieldIcon />, 'Password Health')}
         {navItem(section === 'trash', () => setSection('trash'), <TrashNavIcon />, 'Recently Deleted')}
       </nav>

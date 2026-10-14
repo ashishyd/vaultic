@@ -72,6 +72,16 @@ interface SecureNoteRecord {
   deletedAt?: number
 }
 
+interface BookmarkRecord {
+  id: string
+  title: string
+  url: string
+  folder?: string
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+}
+
 export interface LabelSummary {
   id: string
   name: string
@@ -118,7 +128,7 @@ export interface LoginSummary {
   hasTotp: boolean
 }
 
-export type TrashKind = 'key' | 'login' | 'recovery' | 'note'
+export type TrashKind = 'key' | 'login' | 'recovery' | 'note' | 'bookmark'
 
 export interface TrashItem {
   kind: TrashKind
@@ -140,6 +150,7 @@ export interface StorageInfo {
     logins: number
     recoveryCodes: number
     secureNotes: number
+    bookmarks: number
   }
 }
 
@@ -158,6 +169,35 @@ export interface SecureNoteSummary {
   contentLength: number
   createdAt: number
   updatedAt: number
+}
+
+/** The full URL is only released through the auth-gated reveal/copy/open handlers; the list sees the host only. */
+export interface BookmarkSummary {
+  id: string
+  title: string
+  host: string
+  folder?: string
+  createdAt: number
+  updatedAt: number
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host || url
+  } catch {
+    return url
+  }
+}
+
+function toBookmarkSummary(r: BookmarkRecord): BookmarkSummary {
+  return {
+    id: r.id,
+    title: r.title,
+    host: hostOf(r.url),
+    folder: r.folder,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt ?? r.createdAt
+  }
 }
 
 function toApiKeySummary(r: ApiKeyRecord): ApiKeySummary {
@@ -218,6 +258,7 @@ interface VaultData {
   labels: LabelRecord[]
   recoveryCodes: RecoveryCodeRecord[]
   secureNotes: SecureNoteRecord[]
+  bookmarks: BookmarkRecord[]
 }
 
 const EMPTY_VAULT: VaultData = {
@@ -225,7 +266,8 @@ const EMPTY_VAULT: VaultData = {
   logins: [],
   labels: [],
   recoveryCodes: [],
-  secureNotes: []
+  secureNotes: [],
+  bookmarks: []
 }
 
 function vaultPath(): string {
@@ -283,6 +325,7 @@ class VaultStore {
     if (!data.labels) data.labels = [] // vaults created before labels existed
     if (!data.recoveryCodes) data.recoveryCodes = [] // vaults created before recovery codes existed
     if (!data.secureNotes) data.secureNotes = [] // vaults created before secure notes existed
+    if (!data.bookmarks) data.bookmarks = [] // vaults created before bookmarks existed
     this.data = data
     this.key = key
     this.salt = Buffer.from(encrypted.salt, 'hex')
@@ -298,6 +341,7 @@ class VaultStore {
     if (!data.labels) data.labels = [] // vaults created before labels existed
     if (!data.recoveryCodes) data.recoveryCodes = [] // vaults created before recovery codes existed
     if (!data.secureNotes) data.secureNotes = [] // vaults created before secure notes existed
+    if (!data.bookmarks) data.bookmarks = [] // vaults created before bookmarks existed
     this.data = data
     this.key = key
     this.salt = Buffer.from(encrypted.salt, 'hex')
@@ -380,12 +424,13 @@ class VaultStore {
     const data = this.ensureUnlocked()
     const cutoff = Date.now() - TRASH_RETENTION_MS_INTERNAL
     const before =
-      data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length
+      data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length + data.bookmarks.length
     data.apiKeys = data.apiKeys.filter((k) => !k.deletedAt || k.deletedAt > cutoff)
     data.logins = data.logins.filter((l) => !l.deletedAt || l.deletedAt > cutoff)
     data.recoveryCodes = data.recoveryCodes.filter((r) => !r.deletedAt || r.deletedAt > cutoff)
     data.secureNotes = data.secureNotes.filter((n) => !n.deletedAt || n.deletedAt > cutoff)
-    if (data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length !== before) {
+    data.bookmarks = data.bookmarks.filter((b) => !b.deletedAt || b.deletedAt > cutoff)
+    if (data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length + data.bookmarks.length !== before) {
       await this.persist()
     }
   }
@@ -412,6 +457,23 @@ class VaultStore {
     return this.ensureUnlocked()
       .secureNotes.filter((n) => !n.deletedAt)
       .map(toSecureNoteSummary)
+  }
+
+  listBookmarks(): BookmarkSummary[] {
+    return this.ensureUnlocked()
+      .bookmarks.filter((b) => !b.deletedAt)
+      .map(toBookmarkSummary)
+  }
+
+  /** Biometric-gated in ipc-handlers before this is called. */
+  getBookmark(id: string): { title: string; url: string; folder?: string } | null {
+    const b = this.ensureUnlocked().bookmarks.find((x) => x.id === id && !x.deletedAt)
+    return b ? { title: b.title, url: b.url, folder: b.folder } : null
+  }
+
+  /** Normalized URLs already stored — lets the import UI flag duplicates without exposing them. */
+  hasBookmarkUrl(url: string): boolean {
+    return this.ensureUnlocked().bookmarks.some((b) => !b.deletedAt && b.url === url)
   }
 
   /** Biometric-gated in ipc-handlers before this is called. */
@@ -526,6 +588,63 @@ class VaultStore {
     data.secureNotes.push(full)
     await this.persist()
     return toSecureNoteSummary(full)
+  }
+
+  async addBookmark(entry: { title: string; url: string; folder?: string }): Promise<BookmarkSummary> {
+    const data = this.ensureUnlocked()
+    const now = Date.now()
+    const full: BookmarkRecord = { ...entry, id: randomUUID(), createdAt: now, updatedAt: now }
+    data.bookmarks.push(full)
+    await this.persist()
+    return toBookmarkSummary(full)
+  }
+
+  /** Skips URLs already in the vault. Returns how many were added vs skipped. */
+  async addBookmarksBatch(
+    entries: Array<{ title: string; url: string; folder?: string }>
+  ): Promise<{ added: number; skipped: number }> {
+    const data = this.ensureUnlocked()
+    const seen = new Set(data.bookmarks.filter((b) => !b.deletedAt).map((b) => b.url))
+    const now = Date.now()
+    let added = 0
+    for (const e of entries) {
+      if (seen.has(e.url)) continue
+      seen.add(e.url)
+      data.bookmarks.push({ ...e, id: randomUUID(), createdAt: now, updatedAt: now })
+      added++
+    }
+    if (added > 0) await this.persist()
+    return { added, skipped: entries.length - added }
+  }
+
+  /** Biometric-gated in ipc-handlers before this is called. */
+  async updateBookmark(
+    id: string,
+    patch: { title: string; url: string; folder?: string }
+  ): Promise<BookmarkSummary> {
+    const data = this.ensureUnlocked()
+    const b = data.bookmarks.find((x) => x.id === id)
+    if (!b) throw new Error('Bookmark not found')
+    b.title = patch.title
+    b.url = patch.url
+    b.folder = patch.folder
+    b.updatedAt = Date.now()
+    await this.persist()
+    return toBookmarkSummary(b)
+  }
+
+  async deleteBookmark(id: string): Promise<void> {
+    const data = this.ensureUnlocked()
+    const b = data.bookmarks.find((x) => x.id === id)
+    if (b) b.deletedAt = Date.now()
+    await this.persist()
+  }
+
+  async restoreBookmark(id: string): Promise<void> {
+    const data = this.ensureUnlocked()
+    const b = data.bookmarks.find((x) => x.id === id)
+    if (b) b.deletedAt = undefined
+    await this.persist()
   }
 
   /** Soft-delete — kept in storage so it can be restored (undo), swept after 30 days. */
@@ -879,6 +998,18 @@ class VaultStore {
       })
     }
 
+    for (const b of data.bookmarks) {
+      if (!b.deletedAt) continue
+      items.push({
+        kind: 'bookmark',
+        id: b.id,
+        title: b.title,
+        subtitle: hostOf(b.url),
+        deletedAt: b.deletedAt,
+        expiresAt: b.deletedAt + retention
+      })
+    }
+
     return items.sort((a, b) => b.deletedAt - a.deletedAt)
   }
 
@@ -886,6 +1017,7 @@ class VaultStore {
     if (kind === 'key') await this.restoreApiKey(id)
     else if (kind === 'login') await this.restoreLogin(id)
     else if (kind === 'recovery') await this.restoreRecoveryCode(id)
+    else if (kind === 'bookmark') await this.restoreBookmark(id)
     else await this.restoreSecureNote(id)
   }
 
@@ -894,6 +1026,7 @@ class VaultStore {
     if (kind === 'key') data.apiKeys = data.apiKeys.filter((k) => k.id !== id)
     else if (kind === 'login') data.logins = data.logins.filter((l) => l.id !== id)
     else if (kind === 'recovery') data.recoveryCodes = data.recoveryCodes.filter((r) => r.id !== id)
+    else if (kind === 'bookmark') data.bookmarks = data.bookmarks.filter((b) => b.id !== id)
     else data.secureNotes = data.secureNotes.filter((n) => n.id !== id)
     await this.persist()
   }
@@ -901,14 +1034,15 @@ class VaultStore {
   async emptyTrash(): Promise<number> {
     const data = this.ensureUnlocked()
     const before =
-      data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length
+      data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length + data.bookmarks.length
     data.apiKeys = data.apiKeys.filter((k) => !k.deletedAt)
     data.logins = data.logins.filter((l) => !l.deletedAt)
     data.recoveryCodes = data.recoveryCodes.filter((r) => !r.deletedAt)
     data.secureNotes = data.secureNotes.filter((n) => !n.deletedAt)
+    data.bookmarks = data.bookmarks.filter((b) => !b.deletedAt)
     const removed =
       before -
-      (data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length)
+      (data.apiKeys.length + data.logins.length + data.recoveryCodes.length + data.secureNotes.length + data.bookmarks.length)
     if (removed > 0) await this.persist()
     return removed
   }
@@ -931,7 +1065,8 @@ class VaultStore {
         apiKeys: this.listApiKeys().length,
         logins: this.listLogins().length,
         recoveryCodes: this.listRecoveryCodes().length,
-        secureNotes: this.listSecureNotes().length
+        secureNotes: this.listSecureNotes().length,
+        bookmarks: this.listBookmarks().length
       }
     }
   }

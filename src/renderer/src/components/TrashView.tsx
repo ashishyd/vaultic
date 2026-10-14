@@ -19,6 +19,8 @@ function kindLabel(kind: TrashItem['kind']): string {
       return 'Recovery'
     case 'note':
       return 'Note'
+    case 'bookmark':
+      return 'Bookmark'
   }
 }
 

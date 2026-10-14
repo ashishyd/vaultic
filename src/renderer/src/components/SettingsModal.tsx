@@ -252,7 +252,7 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
                   </p>
                   <p>
                     Items: {storage.counts.apiKeys} keys · {storage.counts.logins} logins ·{' '}
-                    {storage.counts.recoveryCodes} recovery · {storage.counts.secureNotes} notes
+                    {storage.counts.recoveryCodes} recovery · {storage.counts.secureNotes} notes · {storage.counts.bookmarks} bookmarks
                   </p>
                   <p>
                     Trash: {storage.trashCount} item{storage.trashCount === 1 ? '' : 's'} (kept{' '}

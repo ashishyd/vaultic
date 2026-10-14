@@ -11,6 +11,7 @@ import { analyzeLogins, generateStrongPassword } from './password-strength'
 import { suggestLabelsWithAi, detectAvailableCli } from './ai-cli'
 import { readSettings, writeSettings, type AppSettings } from './settings'
 import { getFrontmostChromeTabUrl, getFrontmostBrowserTabUrl } from './chrome'
+import { scanBrowserBookmarks } from './chrome-bookmarks'
 import { getBridgeInfo } from './browser-bridge'
 import { installNativeMessagingHost, getNativeHostInstallInfo } from './native-host-install'
 
@@ -77,6 +78,19 @@ function takeDeletableImportPath(filePath: string): string | null {
     return resolved
   }
   return null
+}
+
+/** Accepts bare domains ("example.com"); only http(s) links are kept. */
+function normalizeBookmarkUrl(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+  try {
+    const u = new URL(withScheme)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.toString() : null
+  } catch {
+    return null
+  }
 }
 
 export function registerVaultIpcHandlers(): void {
@@ -274,6 +288,78 @@ export function registerVaultIpcHandlers(): void {
     copyWithAutoClear(content)
     return true
   })
+
+  // --- Bookmarks ---
+  ipcMain.handle('vault:listBookmarks', () => vaultStore.listBookmarks())
+
+  ipcMain.handle('vault:addBookmark', (_e, entry: { title: string; url: string; folder?: string }) => {
+    const url = normalizeBookmarkUrl(entry.url)
+    if (!url) throw new Error('Enter a valid link')
+    return vaultStore.addBookmark({ title: entry.title.trim() || url, url, folder: entry.folder?.trim() || undefined })
+  })
+
+  ipcMain.handle('vault:deleteBookmark', (_e, id: string) => vaultStore.deleteBookmark(id))
+  ipcMain.handle('vault:restoreBookmark', (_e, id: string) => vaultStore.restoreBookmark(id))
+
+  ipcMain.handle('vault:revealBookmarkUrl', async (_e, id: string) => {
+    const ok = await requireAuth('view this bookmark')
+    if (!ok) return null
+    return vaultStore.getBookmark(id)
+  })
+
+  ipcMain.handle('vault:copyBookmarkUrl', async (_e, id: string) => {
+    const ok = await requireAuth('copy this link')
+    if (!ok) return false
+    const b = vaultStore.getBookmark(id)
+    if (!b) return false
+    copyWithAutoClear(b.url)
+    return true
+  })
+
+  ipcMain.handle('vault:openBookmark', async (_e, id: string) => {
+    const ok = await requireAuth('open this bookmark')
+    if (!ok) return false
+    const b = vaultStore.getBookmark(id)
+    if (!b || !/^https?:\/\//i.test(b.url)) return false
+    await shell.openExternal(b.url)
+    return true
+  })
+
+  ipcMain.handle(
+    'vault:updateBookmark',
+    async (_e, id: string, patch: { title: string; url: string; folder?: string }) => {
+      const ok = await requireAuth('edit this bookmark')
+      if (!ok) return null
+      const url = normalizeBookmarkUrl(patch.url)
+      if (!url) return null
+      return vaultStore.updateBookmark(id, {
+        title: patch.title.trim() || url,
+        url,
+        folder: patch.folder?.trim() || undefined
+      })
+    }
+  )
+
+  /** Read-only scan of installed browsers' bookmarks; nothing is saved until the user picks. */
+  ipcMain.handle('vault:scanBrowserBookmarks', async () => {
+    const { bookmarks, permissionDenied } = await scanBrowserBookmarks()
+    return {
+      bookmarks: bookmarks
+        .filter((b) => /^https?:\/\//i.test(b.url))
+        .map((b) => ({ ...b, alreadyAdded: vaultStore.hasBookmarkUrl(b.url) })),
+      permissionDenied
+    }
+  })
+
+  ipcMain.handle(
+    'vault:importBookmarks',
+    async (_e, entries: Array<{ title: string; url: string; folder?: string }>) => {
+      const clean = entries
+        .map((e) => ({ title: e.title, url: normalizeBookmarkUrl(e.url), folder: e.folder || undefined }))
+        .filter((e): e is { title: string; url: string; folder: string | undefined } => !!e.url)
+      return vaultStore.addBookmarksBatch(clean)
+    }
+  )
 
   ipcMain.handle('vault:copyToClipboard', (_e, value: string) => {
     copyWithAutoClear(value)

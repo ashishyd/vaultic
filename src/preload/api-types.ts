@@ -21,7 +21,7 @@ export interface LoginSummary {
   hasTotp: boolean
 }
 
-export type TrashKind = 'key' | 'login' | 'recovery' | 'note'
+export type TrashKind = 'key' | 'login' | 'recovery' | 'note' | 'bookmark'
 
 export interface TrashItem {
   kind: TrashKind
@@ -43,6 +43,7 @@ export interface StorageInfo {
     logins: number
     recoveryCodes: number
     secureNotes: number
+    bookmarks: number
   }
 }
 
@@ -77,6 +78,37 @@ export interface SecureNoteSummary {
   contentLength: number
   createdAt: number
   updatedAt: number
+}
+
+export interface BookmarkSummary {
+  id: string
+  title: string
+  host: string
+  folder?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface BookmarkInput {
+  title: string
+  url: string
+  folder?: string
+}
+
+export interface BrowserBookmark {
+  key: string
+  title: string
+  url: string
+  folder: string
+  browser: string
+  profile: string
+  alreadyAdded: boolean
+}
+
+export interface BrowserBookmarkScanResult {
+  bookmarks: BrowserBookmark[]
+  /** True when macOS blocked reading a browser profile (Vaultic needs Full Disk Access). */
+  permissionDenied: boolean
 }
 
 export interface ScannedFile {
@@ -137,6 +169,18 @@ export interface VaultAPI {
   listLogins: () => Promise<LoginSummary[]>
   listRecoveryCodes: () => Promise<RecoveryCodeSummary[]>
   listSecureNotes: () => Promise<SecureNoteSummary[]>
+  listBookmarks: () => Promise<BookmarkSummary[]>
+  addBookmark: (entry: BookmarkInput) => Promise<BookmarkSummary>
+  deleteBookmark: (id: string) => Promise<void>
+  restoreBookmark: (id: string) => Promise<void>
+  /** Touch ID-gated; null if declined. */
+  revealBookmarkUrl: (id: string) => Promise<BookmarkInput | null>
+  copyBookmarkUrl: (id: string) => Promise<boolean>
+  /** Touch ID-gated; opens in the default browser. */
+  openBookmark: (id: string) => Promise<boolean>
+  updateBookmark: (id: string, patch: BookmarkInput) => Promise<BookmarkSummary | null>
+  scanBrowserBookmarks: () => Promise<BrowserBookmarkScanResult>
+  importBookmarks: (entries: BookmarkInput[]) => Promise<{ added: number; skipped: number }>
 
   addApiKey: (entry: {
     project: string

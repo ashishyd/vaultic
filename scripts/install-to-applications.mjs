@@ -34,3 +34,6 @@ if (existsSync(destPath)) {
 
 execFileSync('ditto', ['-xk', zipPath, '/Applications'], { stdio: 'inherit' })
 console.log(`Installed ${zipPath} -> ${destPath}`)
+
+rmSync(distDir, { recursive: true, force: true })
+console.log(`Removed ${distDir}/`)

@@ -8,6 +8,9 @@ import { LoginList } from './components/LoginList'
 import { PasswordHealthView } from './components/PasswordHealthView'
 import { RecoveryCodesView } from './components/RecoveryCodesView'
 import { SecureNotesView } from './components/SecureNotesView'
+import { BookmarksView } from './components/BookmarksView'
+import { BookmarkFormModal } from './components/BookmarkFormModal'
+import { ImportBookmarksModal } from './components/ImportBookmarksModal'
 import { AddEntryModal } from './components/AddEntryModal'
 import { ScanImportModal } from './components/ScanImportModal'
 import { ScanRecoveryCodesModal } from './components/ScanRecoveryCodesModal'
@@ -50,6 +53,9 @@ export default function App(): JSX.Element {
   const [editRecoveryCodesId, setEditRecoveryCodesId] = useState<string | null>(null)
   const [showAddSecureNote, setShowAddSecureNote] = useState(false)
   const [editSecureNoteId, setEditSecureNoteId] = useState<string | null>(null)
+  const [showAddBookmark, setShowAddBookmark] = useState(false)
+  const [editBookmarkId, setEditBookmarkId] = useState<string | null>(null)
+  const [showImportBookmarks, setShowImportBookmarks] = useState(false)
 
   useEffect(() => {
     window.vaultAPI.hasVault().then(setHasVault)
@@ -141,6 +147,13 @@ export default function App(): JSX.Element {
             {section === 'notes' && (
               <SecureNotesView onEdit={(id) => setEditSecureNoteId(id)} onAdd={() => setShowAddSecureNote(true)} />
             )}
+            {section === 'bookmarks' && (
+              <BookmarksView
+                onEdit={(id) => setEditBookmarkId(id)}
+                onAdd={() => setShowAddBookmark(true)}
+                onImport={() => setShowImportBookmarks(true)}
+              />
+            )}
             {section === 'analysis' && <PasswordHealthView />}
             {section === 'trash' && <TrashView />}
           </main>
@@ -179,6 +192,9 @@ export default function App(): JSX.Element {
           {editRecoveryCodesId && (
             <RecoveryCodesFormModal id={editRecoveryCodesId} onClose={() => setEditRecoveryCodesId(null)} />
           )}
+          {showAddBookmark && <BookmarkFormModal onClose={() => setShowAddBookmark(false)} />}
+          {editBookmarkId && <BookmarkFormModal id={editBookmarkId} onClose={() => setEditBookmarkId(null)} />}
+          {showImportBookmarks && <ImportBookmarksModal onClose={() => setShowImportBookmarks(false)} />}
           {showAddSecureNote && <SecureNoteFormModal onClose={() => setShowAddSecureNote(false)} />}
           {editSecureNoteId && (
             <SecureNoteFormModal id={editSecureNoteId} onClose={() => setEditSecureNoteId(null)} />

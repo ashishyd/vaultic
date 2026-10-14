@@ -4,10 +4,11 @@ import type {
   LoginSummary,
   LabelSummary,
   RecoveryCodeSummary,
-  SecureNoteSummary
+  SecureNoteSummary,
+  BookmarkSummary
 } from '../../../preload/api-types'
 
-export type Section = 'keys' | 'logins' | 'recovery' | 'notes' | 'analysis' | 'trash'
+export type Section = 'keys' | 'logins' | 'recovery' | 'notes' | 'bookmarks' | 'analysis' | 'trash'
 
 interface VaultUIState {
   unlocked: boolean
@@ -21,6 +22,7 @@ interface VaultUIState {
   labels: LabelSummary[]
   recoveryCodes: RecoveryCodeSummary[]
   secureNotes: SecureNoteSummary[]
+  bookmarks: BookmarkSummary[]
   setUnlocked: (v: boolean) => void
   setHasVault: (v: boolean) => void
   setSection: (s: Section) => void
@@ -40,19 +42,21 @@ export const useVaultStore = create<VaultUIState>((set) => ({
   labels: [],
   recoveryCodes: [],
   secureNotes: [],
+  bookmarks: [],
   setUnlocked: (v) => set({ unlocked: v }),
   setHasVault: (v) => set({ hasVault: v }),
   setSection: (s) => set({ section: s, search: '' }),
   setSearch: (q) => set({ search: q }),
   requestFocusSearch: () => set((s) => ({ focusSearchToken: s.focusSearchToken + 1 })),
   refresh: async () => {
-    const [apiKeys, logins, labels, recoveryCodes, secureNotes] = await Promise.all([
+    const [apiKeys, logins, labels, recoveryCodes, secureNotes, bookmarks] = await Promise.all([
       window.vaultAPI.listApiKeys(),
       window.vaultAPI.listLogins(),
       window.vaultAPI.listLabels(),
       window.vaultAPI.listRecoveryCodes(),
-      window.vaultAPI.listSecureNotes()
+      window.vaultAPI.listSecureNotes(),
+      window.vaultAPI.listBookmarks()
     ])
-    set({ apiKeys, logins, labels, recoveryCodes, secureNotes })
+    set({ apiKeys, logins, labels, recoveryCodes, secureNotes, bookmarks })
   }
 }))

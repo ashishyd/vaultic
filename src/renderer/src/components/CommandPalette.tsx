@@ -12,7 +12,7 @@ interface CommandPaletteProps {
 }
 
 type Item =
-  | { kind: 'key' | 'login' | 'recovery' | 'note'; id: string; title: string; subtitle: string }
+  | { kind: 'key' | 'login' | 'recovery' | 'note' | 'bookmark'; id: string; title: string; subtitle: string }
   | { kind: 'nav'; id: string; title: string; subtitle: string; action: 'section' | 'settings' | 'lock'; section?: Section }
 
 const NAV_ITEMS: Item[] = [
@@ -27,6 +27,14 @@ const NAV_ITEMS: Item[] = [
     section: 'recovery'
   },
   { kind: 'nav', id: 'nav-notes', title: 'Go to Secure Notes', subtitle: 'Navigate', action: 'section', section: 'notes' },
+  {
+    kind: 'nav',
+    id: 'nav-bookmarks',
+    title: 'Go to Bookmarks',
+    subtitle: 'Navigate',
+    action: 'section',
+    section: 'bookmarks'
+  },
   {
     kind: 'nav',
     id: 'nav-health',
@@ -57,13 +65,15 @@ function kindLabel(kind: Item['kind']): string {
       return 'Recovery'
     case 'note':
       return 'Note'
+    case 'bookmark':
+      return 'Bookmark'
     case 'nav':
       return 'Action'
   }
 }
 
 export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: CommandPaletteProps): JSX.Element {
-  const { apiKeys, logins, recoveryCodes, secureNotes } = useVaultStore()
+  const { apiKeys, logins, recoveryCodes, secureNotes, bookmarks } = useVaultStore()
   const push = useToastStore((s) => s.push)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -99,8 +109,14 @@ export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: Comm
       title: n.title,
       subtitle: 'Secure note'
     }))
-    return [...NAV_ITEMS, ...keyItems, ...loginItems, ...recoveryItems, ...noteItems]
-  }, [apiKeys, logins, recoveryCodes, secureNotes])
+    const bookmarkItems: Item[] = bookmarks.map((b) => ({
+      kind: 'bookmark',
+      id: b.id,
+      title: b.title,
+      subtitle: b.host
+    }))
+    return [...NAV_ITEMS, ...keyItems, ...loginItems, ...recoveryItems, ...noteItems, ...bookmarkItems]
+  }, [apiKeys, logins, recoveryCodes, secureNotes, bookmarks])
 
   const filtered = useMemo(() => {
     const q = query.trim()
@@ -142,13 +158,16 @@ export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: Comm
     } else if (item.kind === 'recovery') {
       ok = await window.vaultAPI.copyRecoveryCode(item.id, 0)
       label = 'recovery code'
+    } else if (item.kind === 'bookmark') {
+      ok = await window.vaultAPI.openBookmark(item.id)
+      label = 'bookmark'
     } else {
       ok = await window.vaultAPI.copySecureNoteContent(item.id)
       label = 'note'
     }
 
     push(
-      ok ? `Copied ${label} for "${item.title}"` : 'Authentication failed or was cancelled',
+      ok ? `${item.kind === 'bookmark' ? 'Opened' : 'Copied'} ${label} for "${item.title}"` : 'Authentication failed or was cancelled',
       ok ? 'success' : 'error'
     )
     onClose()
