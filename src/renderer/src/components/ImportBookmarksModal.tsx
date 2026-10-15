@@ -8,6 +8,12 @@ interface ImportBookmarksModalProps {
   onClose: () => void
 }
 
+/** "Bookmarks bar / Work / Docs" -> "Docs" — the breadcrumb is useful for picking, not for storage. */
+function leafFolderName(path: string): string {
+  const parts = path.split('/').map((p) => p.trim()).filter(Boolean)
+  return parts.at(-1) ?? ''
+}
+
 export function ImportBookmarksModal({ onClose }: ImportBookmarksModalProps): JSX.Element {
   useEscapeKey(onClose)
   const { refresh } = useVaultStore()
@@ -78,7 +84,10 @@ export function ImportBookmarksModal({ onClose }: ImportBookmarksModalProps): JS
     setImporting(true)
     try {
       const { added, skipped } = await window.vaultAPI.importBookmarks(
-        picked.map((b) => ({ title: b.title, url: b.url, folder: b.folder || undefined }))
+        // Chrome's folder is a full breadcrumb ("Bookmarks bar / Work / Docs") —
+        // default to just the leaf name so the bookmark list isn't cluttered with
+        // parent-folder paths the user never asked to see.
+        picked.map((b) => ({ title: b.title, url: b.url, folder: leafFolderName(b.folder) || undefined }))
       )
       await refresh()
       push(`Imported ${added} bookmark${added === 1 ? '' : 's'}${skipped ? ` (${skipped} duplicates skipped)` : ''}`, 'success')

@@ -46,6 +46,9 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set())
   const [showDeadOnly, setShowDeadOnly] = useState(false)
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
+  const [renamingFolder, setRenamingFolder] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [renaming, setRenaming] = useState(false)
 
   useEffect(() => {
     if (bookmarkPreviewBackfillTriggered || bookmarks.length === 0) return
@@ -151,6 +154,37 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
     }
   }
 
+  function startRenameFolder(folder: string): void {
+    setRenamingFolder(folder)
+    setRenameValue(folder)
+  }
+
+  async function handleRenameFolder(): Promise<void> {
+    if (!renamingFolder) return
+    const trimmed = renameValue.trim()
+    if (!trimmed || trimmed === renamingFolder) {
+      setRenamingFolder(null)
+      return
+    }
+    setRenaming(true)
+    try {
+      const result = await window.vaultAPI.renameBookmarkFolder(renamingFolder, trimmed)
+      if (result.success) {
+        if (selectedFolder === renamingFolder) setSelectedFolder(trimmed)
+        await refresh()
+        push(
+          `Renamed to "${trimmed}" for ${result.count} bookmark${result.count === 1 ? '' : 's'}`,
+          'success'
+        )
+        setRenamingFolder(null)
+      } else {
+        push(result.error ?? 'Could not rename folder', 'error')
+      }
+    } finally {
+      setRenaming(false)
+    }
+  }
+
   function revealThumbnail(id: string): void {
     setRevealedIds((prev) => new Set(prev).add(id))
   }
@@ -229,17 +263,28 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
             All <span className="opacity-70">{bookmarks.length}</span>
           </button>
           {folders.named.map(([folder, count]) => (
-            <button
+            <span
               key={folder}
-              onClick={() => setSelectedFolder((cur) => (cur === folder ? null : folder))}
-              className={`rounded-full border px-3 py-1 text-xs font-medium ${
+              className={`inline-flex items-center overflow-hidden rounded-full border text-xs font-medium ${
                 selectedFolder === folder
                   ? 'border-vt-teal bg-vt-teal/10 text-vt-teal'
-                  : 'border-vt-border text-vt-muted hover:bg-vt-surface2'
+                  : 'border-vt-border text-vt-muted'
               }`}
             >
-              {folder} <span className="opacity-70">{count}</span>
-            </button>
+              <button
+                onClick={() => setSelectedFolder((cur) => (cur === folder ? null : folder))}
+                className="py-1 pl-3 pr-1.5 hover:bg-vt-surface2"
+              >
+                {folder} <span className="opacity-70">{count}</span>
+              </button>
+              <button
+                onClick={() => startRenameFolder(folder)}
+                title={`Rename "${folder}"`}
+                className="border-l border-vt-border px-1.5 py-1 opacity-60 hover:bg-vt-surface2 hover:opacity-100"
+              >
+                <PencilIcon size={10} />
+              </button>
+            </span>
           ))}
           {folders.unfiled > 0 && (
             <button
@@ -370,6 +415,45 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
       )}
 
       {lightboxImage && <ImageLightbox src={lightboxImage} onClose={() => setLightboxImage(null)} />}
+
+      {renamingFolder !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setRenamingFolder(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="mb-1 text-sm font-semibold">Rename folder</h2>
+            <p className="mb-3 text-xs text-vt-muted">
+              Renames every bookmark currently in &quot;{renamingFolder}&quot; at once.
+            </p>
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void handleRenameFolder()}
+              className="mb-3 w-full rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2 text-sm outline-none focus:border-vt-teal"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setRenamingFolder(null)}
+                className="rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleRenameFolder()}
+                disabled={!renameValue.trim() || renaming}
+                className="rounded-lg bg-vt-teal px-3 py-1.5 text-sm font-medium text-vt-bg hover:brightness-110 disabled:opacity-50"
+              >
+                {renaming ? 'Renaming…' : 'Rename'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

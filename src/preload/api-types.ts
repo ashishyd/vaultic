@@ -200,6 +200,11 @@ export interface VaultAPI {
   listSensitiveFolders: () => Promise<string[]>
   setFolderSensitive: (folder: string, sensitive: boolean) => Promise<{ success: boolean; error?: string }>
   setBookmarkSensitive: (id: string, sensitive: boolean) => Promise<BookmarkSummary | null>
+  /** Renames a folder for every bookmark in it at once. */
+  renameBookmarkFolder: (
+    oldName: string,
+    newName: string
+  ) => Promise<{ success: boolean; count?: number; error?: string }>
   updateBookmark: (id: string, patch: BookmarkInput) => Promise<BookmarkSummary | null>
   scanBrowserBookmarks: () => Promise<BrowserBookmarkScanResult>
   importBookmarks: (entries: BookmarkInput[]) => Promise<{ added: number; skipped: number }>

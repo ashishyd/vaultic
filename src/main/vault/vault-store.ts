@@ -585,6 +585,23 @@ class VaultStore {
     return toBookmarkSummary(b, data.sensitiveFolders)
   }
 
+  /** Renames a folder for every bookmark in it at once. Returns how many were updated. */
+  async renameBookmarkFolder(oldName: string, newName: string): Promise<number> {
+    const data = this.ensureUnlocked()
+    let count = 0
+    for (const b of data.bookmarks) {
+      if (!b.deletedAt && b.folder === oldName) {
+        b.folder = newName
+        count++
+      }
+    }
+    if (data.sensitiveFolders.includes(oldName)) {
+      data.sensitiveFolders = [...new Set(data.sensitiveFolders.map((f) => (f === oldName ? newName : f)))]
+    }
+    if (count > 0) await this.persist()
+    return count
+  }
+
   /** Biometric-gated in ipc-handlers before this is called. */
   getApiKeyValue(id: string): string | null {
     const data = this.ensureUnlocked()
