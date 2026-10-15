@@ -3,6 +3,7 @@ import { useVaultStore } from '../stores/vault-store'
 import { useToastStore } from '../stores/toast-store'
 import { ConfirmDialog } from './ConfirmDialog'
 import { ImageLightbox } from './ImageLightbox'
+import { ModalBackdrop } from './ModalBackdrop'
 import { PageHeader } from './PageHeader'
 import { IconButton } from './IconButton'
 import {
@@ -49,6 +50,7 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [renaming, setRenaming] = useState(false)
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null)
 
   useEffect(() => {
     if (bookmarkPreviewBackfillTriggered || bookmarks.length === 0) return
@@ -185,6 +187,14 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
     }
   }
 
+  async function handleMoveToFolder(id: string, folder: string): Promise<void> {
+    const bookmark = bookmarks.find((b) => b.id === id)
+    if (!bookmark || (bookmark.folder ?? '') === folder) return
+    await window.vaultAPI.setBookmarkFolder(id, folder || undefined)
+    await refresh()
+    push(folder ? `Moved to "${folder}"` : 'Removed from folder', 'success')
+  }
+
   function revealThumbnail(id: string): void {
     setRevealedIds((prev) => new Set(prev).add(id))
   }
@@ -265,10 +275,24 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
           {folders.named.map(([folder, count]) => (
             <span
               key={folder}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                setDragOverFolder(folder)
+              }}
+              onDragLeave={() => setDragOverFolder((cur) => (cur === folder ? null : cur))}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragOverFolder(null)
+                const id = e.dataTransfer.getData('text/vaultic-bookmark-id')
+                if (id) void handleMoveToFolder(id, folder)
+              }}
               className={`inline-flex items-center overflow-hidden rounded-full border text-xs font-medium ${
-                selectedFolder === folder
-                  ? 'border-vt-teal bg-vt-teal/10 text-vt-teal'
-                  : 'border-vt-border text-vt-muted'
+                dragOverFolder === folder
+                  ? 'border-vt-teal bg-vt-teal/20 text-vt-teal'
+                  : selectedFolder === folder
+                    ? 'border-vt-teal bg-vt-teal/10 text-vt-teal'
+                    : 'border-vt-border text-vt-muted'
               }`}
             >
               <button
@@ -289,10 +313,24 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
           {folders.unfiled > 0 && (
             <button
               onClick={() => setSelectedFolder((cur) => (cur === '' ? null : ''))}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                setDragOverFolder('')
+              }}
+              onDragLeave={() => setDragOverFolder((cur) => (cur === '' ? null : cur))}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragOverFolder(null)
+                const id = e.dataTransfer.getData('text/vaultic-bookmark-id')
+                if (id) void handleMoveToFolder(id, '')
+              }}
               className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                selectedFolder === ''
-                  ? 'border-vt-teal bg-vt-teal/10 text-vt-teal'
-                  : 'border-vt-border text-vt-muted hover:bg-vt-surface2'
+                dragOverFolder === ''
+                  ? 'border-vt-teal bg-vt-teal/20 text-vt-teal'
+                  : selectedFolder === ''
+                    ? 'border-vt-teal bg-vt-teal/10 text-vt-teal'
+                    : 'border-vt-border text-vt-muted hover:bg-vt-surface2'
               }`}
             >
               No folder <span className="opacity-70">{folders.unfiled}</span>
@@ -314,6 +352,11 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
             {filtered.map((b) => (
               <div
                 key={b.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/vaultic-bookmark-id', b.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
                 className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 ${
                   b.linkStatus === 'dead' ? 'border-vt-danger/50 bg-vt-danger/5' : 'border-vt-border'
                 }`}
@@ -417,10 +460,7 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
       {lightboxImage && <ImageLightbox src={lightboxImage} onClose={() => setLightboxImage(null)} />}
 
       {renamingFolder !== null && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setRenamingFolder(null)}
-        >
+        <ModalBackdrop onClose={() => setRenamingFolder(null)}>
           <div
             className="w-full max-w-sm rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
@@ -452,7 +492,7 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   )

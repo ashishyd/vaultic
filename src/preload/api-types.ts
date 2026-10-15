@@ -200,6 +200,8 @@ export interface VaultAPI {
   listSensitiveFolders: () => Promise<string[]>
   setFolderSensitive: (folder: string, sensitive: boolean) => Promise<{ success: boolean; error?: string }>
   setBookmarkSensitive: (id: string, sensitive: boolean) => Promise<BookmarkSummary | null>
+  /** Moves a single bookmark into a folder (or removes it from one) without touching title/url. */
+  setBookmarkFolder: (id: string, folder: string | undefined) => Promise<BookmarkSummary | null>
   /** Renames a folder for every bookmark in it at once. */
   renameBookmarkFolder: (
     oldName: string,

@@ -17,6 +17,9 @@ export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.
   const { refresh, bookmarks, sensitiveFolders } = useVaultStore()
   const push = useToastStore((s) => s.push)
   const existing = id ? bookmarks.find((b) => b.id === id) : undefined
+  const existingFolders = [...new Set(bookmarks.map((b) => b.folder).filter((f): f is string => !!f))].sort(
+    (a, b) => a.localeCompare(b)
+  )
 
   const [title, setTitle] = useState('')
   const [url, setUrl] = useState('')
@@ -193,11 +196,19 @@ export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.
               <label className="mb-1 block text-xs font-medium text-vt-muted">Folder (optional)</label>
               <input
                 type="text"
+                list="bookmark-folder-options"
                 value={folder}
                 onChange={(e) => setFolder(e.target.value)}
                 placeholder="e.g. Reading list"
                 className={inputCls}
               />
+              {existingFolders.length > 0 && (
+                <datalist id="bookmark-folder-options">
+                  {existingFolders.map((f) => (
+                    <option key={f} value={f} />
+                  ))}
+                </datalist>
+              )}
             </div>
 
             {id && (

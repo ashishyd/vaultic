@@ -399,6 +399,10 @@ export function registerVaultIpcHandlers(): void {
     vaultStore.setBookmarkSensitive(id, sensitive)
   )
 
+  ipcMain.handle('vault:setBookmarkFolder', (_e, id: string, folder: string | undefined) =>
+    vaultStore.setBookmarkFolder(id, folder?.trim() || undefined)
+  )
+
   ipcMain.handle('vault:renameBookmarkFolder', async (_e, oldName: string, newName: string) => {
     const trimmed = newName?.trim()
     if (!oldName || !trimmed) return { success: false as const, error: 'Enter a folder name' }

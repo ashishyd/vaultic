@@ -585,6 +585,15 @@ class VaultStore {
     return toBookmarkSummary(b, data.sensitiveFolders)
   }
 
+  async setBookmarkFolder(id: string, folder: string | undefined): Promise<BookmarkSummary | null> {
+    const data = this.ensureUnlocked()
+    const b = data.bookmarks.find((x) => x.id === id && !x.deletedAt)
+    if (!b) return null
+    b.folder = folder
+    await this.persist()
+    return toBookmarkSummary(b, data.sensitiveFolders)
+  }
+
   /** Renames a folder for every bookmark in it at once. Returns how many were updated. */
   async renameBookmarkFolder(oldName: string, newName: string): Promise<number> {
     const data = this.ensureUnlocked()
