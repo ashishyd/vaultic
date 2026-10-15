@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 import type { ScannedRecoveryCodes } from '../../../preload/api-types'
 import { useEscapeKey } from '../lib/use-escape-key'
+import { ModalBackdrop } from './ModalBackdrop'
 
 interface ScanRecoveryCodesModalProps {
   onClose: () => void
@@ -58,7 +59,7 @@ export function ScanRecoveryCodesModal({ onClose }: ScanRecoveryCodesModalProps)
   const totalSelected = selected.size
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <ModalBackdrop onClose={onClose}>
       <div
         className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -124,6 +125,6 @@ export function ScanRecoveryCodesModal({ onClose }: ScanRecoveryCodesModalProps)
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   )
 }

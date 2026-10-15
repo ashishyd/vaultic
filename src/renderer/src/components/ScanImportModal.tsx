@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 import type { ScannedFile } from '../../../preload/api-types'
 import { useEscapeKey } from '../lib/use-escape-key'
+import { ModalBackdrop } from './ModalBackdrop'
 
 interface ScanImportModalProps {
   onClose: () => void
@@ -78,7 +79,7 @@ export function ScanImportModal({ onClose }: ScanImportModalProps): JSX.Element 
   const totalSelected = selected.size
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <ModalBackdrop onClose={onClose}>
       <div
         className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -150,6 +151,6 @@ export function ScanImportModal({ onClose }: ScanImportModalProps): JSX.Element 
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 import { useToastStore } from '../stores/toast-store'
 import { useEscapeKey } from '../lib/use-escape-key'
+import { ModalBackdrop } from './ModalBackdrop'
 import type { BrowserBookmark } from '../../../preload/api-types'
 
 interface ImportBookmarksModalProps {
@@ -98,7 +99,7 @@ export function ImportBookmarksModal({ onClose }: ImportBookmarksModalProps): JS
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <ModalBackdrop onClose={onClose}>
       <div
         className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -188,6 +189,6 @@ export function ImportBookmarksModal({ onClose }: ImportBookmarksModalProps): JS
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   )
 }

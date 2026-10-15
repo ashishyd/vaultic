@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 import { useToastStore } from '../stores/toast-store'
 import { useEscapeKey } from '../lib/use-escape-key'
+import { ModalBackdrop } from './ModalBackdrop'
 
 interface RecoveryCodesFormModalProps {
   /** When set, edits this existing entry instead of creating a new one. */
@@ -111,7 +112,7 @@ export function RecoveryCodesFormModal({ id, onClose }: RecoveryCodesFormModalPr
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <ModalBackdrop onClose={onClose}>
       <div
         className="w-full max-w-md rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -201,6 +202,6 @@ export function RecoveryCodesFormModal({ id, onClose }: RecoveryCodesFormModalPr
           </div>
         )}
       </div>
-    </div>
+    </ModalBackdrop>
   )
 }

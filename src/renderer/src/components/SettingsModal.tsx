@@ -3,6 +3,7 @@ import { useToastStore } from '../stores/toast-store'
 import { RecoveryModal } from './RecoveryModal'
 import { ConfirmDialog } from './ConfirmDialog'
 import { useEscapeKey } from '../lib/use-escape-key'
+import { ModalBackdrop } from './ModalBackdrop'
 import type { StorageInfo } from '../../../preload/api-types'
 
 interface SettingsModalProps {
@@ -266,7 +267,7 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <ModalBackdrop onClose={onClose}>
       <div
         className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -600,6 +601,6 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
           </div>
         </div>
       )}
-    </div>
+    </ModalBackdrop>
   )
 }

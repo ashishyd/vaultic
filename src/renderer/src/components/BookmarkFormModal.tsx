@@ -3,6 +3,7 @@ import { useVaultStore } from '../stores/vault-store'
 import { useToastStore } from '../stores/toast-store'
 import { useEscapeKey } from '../lib/use-escape-key'
 import { ImageLightbox } from './ImageLightbox'
+import { ModalBackdrop } from './ModalBackdrop'
 import { AlertTriangleIcon } from './icons'
 
 interface BookmarkFormModalProps {
@@ -124,7 +125,7 @@ export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <ModalBackdrop onClose={onClose}>
       <div
         className="w-full max-w-md rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -308,7 +309,7 @@ export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.
           </form>
         )}
       </div>
-    </div>
+    </ModalBackdrop>
       {lightboxImage && <ImageLightbox src={lightboxImage} onClose={() => setLightboxImage(null)} />}
     </>
   )

@@ -3,6 +3,7 @@ import { useVaultStore, type Section } from '../stores/vault-store'
 import { useToastStore } from '../stores/toast-store'
 import { fuzzyMatch } from '../lib/fuzzy'
 import { useEscapeKey } from '../lib/use-escape-key'
+import { ModalBackdrop } from './ModalBackdrop'
 
 interface CommandPaletteProps {
   onClose: () => void
@@ -188,7 +189,10 @@ export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: Comm
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/50 pt-24" onClick={onClose}>
+    <ModalBackdrop
+      onClose={onClose}
+      className="fixed inset-0 z-[200] flex items-start justify-center bg-black/50 pt-24"
+    >
       <div
         className="w-full max-w-lg rounded-2xl border border-vt-border bg-vt-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -223,6 +227,6 @@ export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: Comm
           ))}
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   )
 }
