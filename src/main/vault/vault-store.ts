@@ -80,6 +80,11 @@ interface BookmarkRecord {
   createdAt: number
   updatedAt: number
   deletedAt?: number
+  visitCount?: number
+  lastVisitedAt?: number
+  previewTitle?: string
+  previewDescription?: string
+  previewFetchedAt?: number
 }
 
 export interface LabelSummary {
@@ -179,6 +184,11 @@ export interface BookmarkSummary {
   folder?: string
   createdAt: number
   updatedAt: number
+  visitCount: number
+  lastVisitedAt?: number
+  previewTitle?: string
+  previewDescription?: string
+  previewFetchedAt?: number
 }
 
 function hostOf(url: string): string {
@@ -196,7 +206,12 @@ function toBookmarkSummary(r: BookmarkRecord): BookmarkSummary {
     host: hostOf(r.url),
     folder: r.folder,
     createdAt: r.createdAt,
-    updatedAt: r.updatedAt ?? r.createdAt
+    updatedAt: r.updatedAt ?? r.createdAt,
+    visitCount: r.visitCount ?? 0,
+    lastVisitedAt: r.lastVisitedAt,
+    previewTitle: r.previewTitle,
+    previewDescription: r.previewDescription,
+    previewFetchedAt: r.previewFetchedAt
   }
 }
 
@@ -629,6 +644,31 @@ class VaultStore {
     b.url = patch.url
     b.folder = patch.folder
     b.updatedAt = Date.now()
+    await this.persist()
+    return toBookmarkSummary(b)
+  }
+
+  /** Called after a bookmark is actually opened (normal or incognito), never on a failed/cancelled open. */
+  async recordBookmarkVisit(id: string): Promise<void> {
+    const data = this.ensureUnlocked()
+    const b = data.bookmarks.find((x) => x.id === id && !x.deletedAt)
+    if (!b) return
+    b.visitCount = (b.visitCount ?? 0) + 1
+    b.lastVisitedAt = Date.now()
+    await this.persist()
+  }
+
+  /** Biometric-gated in ipc-handlers before this is called (the fetch itself needs the real URL). */
+  async saveBookmarkPreview(
+    id: string,
+    preview: { title?: string; description?: string }
+  ): Promise<BookmarkSummary | null> {
+    const data = this.ensureUnlocked()
+    const b = data.bookmarks.find((x) => x.id === id && !x.deletedAt)
+    if (!b) return null
+    b.previewTitle = preview.title
+    b.previewDescription = preview.description
+    b.previewFetchedAt = Date.now()
     await this.persist()
     return toBookmarkSummary(b)
   }

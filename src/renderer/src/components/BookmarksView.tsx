@@ -4,7 +4,19 @@ import { useToastStore } from '../stores/toast-store'
 import { ConfirmDialog } from './ConfirmDialog'
 import { PageHeader } from './PageHeader'
 import { IconButton } from './IconButton'
-import { CopyIcon, PencilIcon, TrashIcon, PlusIcon, ExternalLinkIcon } from './icons'
+import { CopyIcon, PencilIcon, TrashIcon, PlusIcon, ExternalLinkIcon, GlassesIcon } from './icons'
+
+function formatLastVisited(ts: number): string {
+  const diffMs = Date.now() - ts
+  const minutes = Math.round(diffMs / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.round(hours / 24)
+  if (days < 30) return `${days}d ago`
+  return new Date(ts).toLocaleDateString()
+}
 
 interface BookmarksViewProps {
   onEdit: (id: string) => void
@@ -33,6 +45,21 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
   async function handleOpen(id: string): Promise<void> {
     const ok = await window.vaultAPI.openBookmark(id)
     if (!ok) push('Touch ID failed or was cancelled', 'error')
+    else await refresh()
+  }
+
+  async function handleOpenIncognito(id: string): Promise<void> {
+    const { ok, reason } = await window.vaultAPI.openBookmarkIncognito(id)
+    if (ok) {
+      await refresh()
+      return
+    }
+    push(
+      reason === 'no-browser'
+        ? 'No private-browsing capable browser found (Chrome, Brave, Edge or Firefox)'
+        : 'Touch ID failed or was cancelled',
+      'error'
+    )
   }
 
   async function handleCopy(id: string): Promise<void> {
@@ -104,10 +131,23 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
                     {b.host}
                     {b.folder && <span className="text-vt-muted/70"> · {b.folder}</span>}
                   </p>
+                  {b.previewDescription && (
+                    <p className="mt-0.5 truncate text-xs text-vt-muted/70" title={b.previewDescription}>
+                      {b.previewDescription}
+                    </p>
+                  )}
+                  <p className="mt-0.5 text-[11px] text-vt-muted/60">
+                    {b.visitCount > 0 && b.lastVisitedAt
+                      ? `Visited ${b.visitCount}× · last ${formatLastVisited(b.lastVisitedAt)}`
+                      : 'Not visited yet'}
+                  </p>
                 </div>
                 <div className="inline-flex shrink-0 gap-0.5">
                   <IconButton onClick={() => handleOpen(b.id)} title="Open (Touch ID)" tone="teal">
                     <ExternalLinkIcon size={14} />
+                  </IconButton>
+                  <IconButton onClick={() => handleOpenIncognito(b.id)} title="Open in incognito/private window (Touch ID)">
+                    <GlassesIcon size={14} />
                   </IconButton>
                   <IconButton onClick={() => handleCopy(b.id)} title="Copy link">
                     <CopyIcon size={14} />

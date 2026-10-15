@@ -12,6 +12,8 @@ import { suggestLabelsWithAi, detectAvailableCli } from './ai-cli'
 import { readSettings, writeSettings, type AppSettings } from './settings'
 import { getFrontmostChromeTabUrl, getFrontmostBrowserTabUrl } from './chrome'
 import { scanBrowserBookmarks } from './chrome-bookmarks'
+import { fetchLinkPreview } from './link-preview'
+import { openUrlIncognito } from './incognito'
 import { getBridgeInfo } from './browser-bridge'
 import { installNativeMessagingHost, getNativeHostInstallInfo } from './native-host-install'
 
@@ -322,7 +324,32 @@ export function registerVaultIpcHandlers(): void {
     const b = vaultStore.getBookmark(id)
     if (!b || !/^https?:\/\//i.test(b.url)) return false
     await shell.openExternal(b.url)
+    await vaultStore.recordBookmarkVisit(id)
     return true
+  })
+
+  ipcMain.handle(
+    'vault:openBookmarkIncognito',
+    async (_e, id: string): Promise<{ ok: boolean; reason?: 'auth' | 'no-browser' }> => {
+      const ok = await requireAuth('open this bookmark privately')
+      if (!ok) return { ok: false, reason: 'auth' }
+      const b = vaultStore.getBookmark(id)
+      if (!b || !/^https?:\/\//i.test(b.url)) return { ok: false, reason: 'no-browser' }
+      const opened = await openUrlIncognito(b.url)
+      if (!opened) return { ok: false, reason: 'no-browser' }
+      await vaultStore.recordBookmarkVisit(id)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle('vault:fetchBookmarkPreview', async (_e, id: string) => {
+    const ok = await requireAuth('fetch a preview of this link')
+    if (!ok) return null
+    const b = vaultStore.getBookmark(id)
+    if (!b) return null
+    const preview = await fetchLinkPreview(b.url)
+    if (!preview) return null
+    return vaultStore.saveBookmarkPreview(id, preview)
   })
 
   ipcMain.handle(

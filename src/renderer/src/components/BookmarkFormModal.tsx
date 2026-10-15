@@ -11,8 +11,9 @@ interface BookmarkFormModalProps {
 
 export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.Element {
   useEscapeKey(onClose)
-  const { refresh } = useVaultStore()
+  const { refresh, bookmarks } = useVaultStore()
   const push = useToastStore((s) => s.push)
+  const existing = id ? bookmarks.find((b) => b.id === id) : undefined
 
   const [title, setTitle] = useState('')
   const [url, setUrl] = useState('')
@@ -21,6 +22,7 @@ export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(!!id)
   const [unavailable, setUnavailable] = useState(false)
+  const [fetchingPreview, setFetchingPreview] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -77,6 +79,22 @@ export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.
       setError('That does not look like a valid http(s) link.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleFetchPreview(): Promise<void> {
+    if (!id) return
+    setFetchingPreview(true)
+    try {
+      const result = await window.vaultAPI.fetchBookmarkPreview(id)
+      if (result) {
+        await refresh()
+        push('Preview updated', 'success')
+      } else {
+        push('Could not fetch a preview for this link', 'error')
+      }
+    } finally {
+      setFetchingPreview(false)
     }
   }
 
@@ -152,6 +170,36 @@ export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.
                 className={inputCls}
               />
             </div>
+
+            {id && (
+              <div className="border-t border-vt-border pt-3">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label className="text-xs font-medium text-vt-muted">Page preview</label>
+                  <button
+                    type="button"
+                    onClick={() => void handleFetchPreview()}
+                    disabled={fetchingPreview}
+                    className="text-xs text-vt-teal hover:underline disabled:opacity-50"
+                  >
+                    {fetchingPreview
+                      ? 'Fetching…'
+                      : existing?.previewFetchedAt
+                        ? 'Refresh preview'
+                        : 'Fetch preview'}
+                  </button>
+                </div>
+                {existing?.previewTitle || existing?.previewDescription ? (
+                  <div className="rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2 text-xs">
+                    {existing.previewTitle && <p className="font-medium">{existing.previewTitle}</p>}
+                    {existing.previewDescription && (
+                      <p className="mt-0.5 text-vt-muted">{existing.previewDescription}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-vt-muted">No preview fetched yet — pulls the page's title and description.</p>
+                )}
+              </div>
+            )}
 
             {error && <p className="text-xs text-vt-danger">{error}</p>}
 

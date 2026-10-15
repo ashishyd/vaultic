@@ -184,6 +184,36 @@ export function UserIcon(props: IconProps): JSX.Element {
   )
 }
 
+export function GlassesIcon(props: IconProps): JSX.Element {
+  return (
+    <Svg {...props}>
+      <circle cx="6" cy="15" r="4" />
+      <circle cx="18" cy="15" r="4" />
+      <path d="M10 15h4" />
+      <path d="M2 13c0-5 2-8 4-9" />
+      <path d="M22 13c0-5-2-8-4-9" />
+    </Svg>
+  )
+}
+
+export function ClockIcon(props: IconProps): JSX.Element {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
+    </Svg>
+  )
+}
+
+export function RefreshIcon(props: IconProps): JSX.Element {
+  return (
+    <Svg {...props}>
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 4v5h-5" />
+    </Svg>
+  )
+}
+
 export function StarIcon({ filled, ...props }: IconProps & { filled?: boolean }): JSX.Element {
   return (
     <svg

@@ -87,6 +87,11 @@ export interface BookmarkSummary {
   folder?: string
   createdAt: number
   updatedAt: number
+  visitCount: number
+  lastVisitedAt?: number
+  previewTitle?: string
+  previewDescription?: string
+  previewFetchedAt?: number
 }
 
 export interface BookmarkInput {
@@ -178,6 +183,8 @@ export interface VaultAPI {
   copyBookmarkUrl: (id: string) => Promise<boolean>
   /** Touch ID-gated; opens in the default browser. */
   openBookmark: (id: string) => Promise<boolean>
+  openBookmarkIncognito: (id: string) => Promise<{ ok: boolean; reason?: 'auth' | 'no-browser' }>
+  fetchBookmarkPreview: (id: string) => Promise<BookmarkSummary | null>
   updateBookmark: (id: string, patch: BookmarkInput) => Promise<BookmarkSummary | null>
   scanBrowserBookmarks: () => Promise<BrowserBookmarkScanResult>
   importBookmarks: (entries: BookmarkInput[]) => Promise<{ added: number; skipped: number }>
