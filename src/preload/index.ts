@@ -109,6 +109,9 @@ const vaultAPI: VaultAPI = {
   pickVaultBackup: () => ipcRenderer.invoke('vault:pickVaultBackup'),
   restoreVault: (sourcePath, masterPassword) =>
     ipcRenderer.invoke('vault:restoreVault', sourcePath, masterPassword),
+  cloudSyncStatus: () => ipcRenderer.invoke('vault:cloudSyncStatus'),
+  cloudSyncPush: () => ipcRenderer.invoke('vault:cloudSyncPush'),
+  cloudSyncPull: (masterPassword) => ipcRenderer.invoke('vault:cloudSyncPull', masterPassword),
   changeMasterPassword: (currentPassword, newPassword, recoveryPassphrase) =>
     ipcRenderer.invoke('vault:changeMasterPassword', currentPassword, newPassword, recoveryPassphrase),
 

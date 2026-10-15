@@ -91,6 +91,7 @@ export interface BookmarkSummary {
   lastVisitedAt?: number
   previewTitle?: string
   previewDescription?: string
+  previewImage?: string
   previewFetchedAt?: number
 }
 
@@ -321,6 +322,9 @@ export interface VaultAPI {
     sourcePath: string,
     masterPassword: string
   ) => Promise<{ success: boolean; error?: string }>
+  cloudSyncStatus: () => Promise<{ configured: boolean; updatedAt: number | null; error?: string }>
+  cloudSyncPush: () => Promise<{ success: boolean; error?: string }>
+  cloudSyncPull: (masterPassword: string) => Promise<{ success: boolean; updatedAt?: number; error?: string }>
   changeMasterPassword: (
     currentPassword: string,
     newPassword: string,

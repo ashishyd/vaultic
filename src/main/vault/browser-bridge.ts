@@ -6,6 +6,7 @@ import { app } from 'electron'
 import { vaultStore } from './vault-store'
 import { biometricGate } from './biometric'
 import { hostnameOf, hostsMatch } from './url-match'
+import { fetchImageAsDataUrl } from './link-preview'
 
 export const BRIDGE_PORT = 17843
 export const BRIDGE_HOST = '127.0.0.1'
@@ -213,6 +214,54 @@ async function handleRequest(
       notes: body.notes?.trim() || undefined
     })
     sendJson(res, 201, { id: summary.id, service: summary.service, username: summary.username })
+    return
+  }
+
+  if (url.pathname === '/v1/bookmarks' && req.method === 'POST') {
+    const ok = await requireBridgeAuth('save bookmark from Chrome')
+    if (!ok) {
+      sendJson(res, 403, { error: 'auth_declined' })
+      return
+    }
+    let body: {
+      title?: string
+      url?: string
+      folder?: string
+      description?: string
+      imageUrl?: string
+    }
+    try {
+      body = JSON.parse(await readBody(req))
+    } catch {
+      sendJson(res, 400, { error: 'invalid_json' })
+      return
+    }
+    const pageUrl = body.url?.trim()
+    if (!pageUrl || !/^https?:\/\//i.test(pageUrl)) {
+      sendJson(res, 400, { error: 'url_required' })
+      return
+    }
+    if (vaultStore.hasBookmarkUrl(pageUrl)) {
+      sendJson(res, 200, { ok: true, alreadyExists: true })
+      return
+    }
+    const title = (body.title || hostnameOf(pageUrl) || pageUrl).trim().slice(0, 200)
+    const summary = await vaultStore.addBookmark({
+      title,
+      url: pageUrl,
+      folder: body.folder?.trim() || undefined
+    })
+    // Best-effort preview — the page already handed us its own title/description/image,
+    // captured straight from the loaded tab, so this just downloads the image server-side
+    // (no CORS restriction here) rather than re-fetching the whole page a second time.
+    const description = body.description?.trim().slice(0, 300) || undefined
+    if (description || body.imageUrl) {
+      const image = body.imageUrl ? await fetchImageAsDataUrl(body.imageUrl) : undefined
+      if (description || image) {
+        await vaultStore.saveBookmarkPreview(summary.id, { title, description, image })
+      }
+    }
+    sendJson(res, 201, { id: summary.id, title: summary.title, host: summary.host })
     return
   }
 

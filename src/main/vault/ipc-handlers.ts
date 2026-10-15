@@ -14,6 +14,7 @@ import { getFrontmostChromeTabUrl, getFrontmostBrowserTabUrl } from './chrome'
 import { scanBrowserBookmarks } from './chrome-bookmarks'
 import { fetchLinkPreview } from './link-preview'
 import { openUrlIncognito } from './incognito'
+import { getCloudSyncStatus, pushVaultToCloud, pullVaultFromCloud } from './cloud-sync'
 import { getBridgeInfo } from './browser-bridge'
 import { installNativeMessagingHost, getNativeHostInstallInfo } from './native-host-install'
 
@@ -726,6 +727,43 @@ export function registerVaultIpcHandlers(): void {
       return {
         success: false as const,
         error: err instanceof Error ? err.message : 'Restore failed — wrong password or corrupt file'
+      }
+    }
+  })
+
+  ipcMain.handle('vault:cloudSyncStatus', () => getCloudSyncStatus())
+
+  ipcMain.handle('vault:cloudSyncPush', async () => {
+    const ok = await requireAuth('sync your vault to the cloud')
+    if (!ok) return { success: false as const, error: 'Authentication cancelled' }
+    try {
+      const blobs = await vaultStore.getBackupBlobs()
+      if (!blobs) return { success: false as const, error: 'No vault file to sync yet' }
+      const result = await pushVaultToCloud(blobs.vaultJson, blobs.recoveryJson)
+      return result.ok ? { success: true as const } : { success: false as const, error: result.error }
+    } catch (err) {
+      return { success: false as const, error: err instanceof Error ? err.message : 'Sync failed' }
+    }
+  })
+
+  ipcMain.handle('vault:cloudSyncPull', async (_e, masterPassword: string) => {
+    const ok = await requireAuth('restore your vault from the cloud')
+    if (!ok) return { success: false as const, error: 'Authentication cancelled' }
+    if (typeof masterPassword !== 'string') return { success: false as const, error: 'Invalid restore request' }
+
+    try {
+      const pulled = await pullVaultFromCloud()
+      if (!pulled.ok) return { success: false as const, error: pulled.error }
+      await vaultStore.restoreVaultFromBlobs(pulled.vaultJson, pulled.recoveryJson, masterPassword)
+      await clearCachedKey()
+      for (const w of BrowserWindow.getAllWindows()) {
+        w.webContents.send('vault:autoLocked')
+      }
+      return { success: true as const, updatedAt: pulled.updatedAt }
+    } catch (err) {
+      return {
+        success: false as const,
+        error: err instanceof Error ? err.message : 'Restore failed — wrong password or corrupt cloud data'
       }
     }
   })

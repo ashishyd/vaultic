@@ -74,5 +74,14 @@ export async function vaultRequest(type, payload = {}) {
       url: payload.url
     })
   }
+  if (type === 'saveBookmark') {
+    return httpSend('POST', '/v1/bookmarks', {
+      title: payload.title,
+      url: payload.url,
+      folder: payload.folder,
+      description: payload.description,
+      imageUrl: payload.imageUrl
+    })
+  }
   return { ok: false, error: 'unknown_type' }
 }

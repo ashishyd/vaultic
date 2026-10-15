@@ -15,6 +15,8 @@ async function handle(message) {
       return vaultRequest('unlockLogin', { id: message.id })
     case 'saveLogin':
       return vaultRequest('saveLogin', message)
+    case 'saveBookmarkFromTab':
+      return saveBookmarkFromTab(message.tabId)
     case 'setToken':
       await setStoredToken(message.token)
       return { ok: true }
@@ -35,6 +37,49 @@ async function handle(message) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
+}
+
+/** Injected into the page — must stay self-contained (no outer scope). Reads what's
+ * already rendered in the tab, so it works on JS-rendered and login-walled pages too. */
+function pageExtractPreview() {
+  function meta(selector) {
+    const el = document.querySelector(selector)
+    return el ? el.getAttribute('content') || undefined : undefined
+  }
+  const title =
+    meta('meta[property="og:title"]') || document.title || undefined
+  const description =
+    meta('meta[property="og:description"]') || meta('meta[name="description"]') || undefined
+  const rawImage = meta('meta[property="og:image"]') || meta('meta[name="twitter:image"]') || undefined
+  let image
+  if (rawImage) {
+    try {
+      image = new URL(rawImage, document.baseURI).toString()
+    } catch {
+      image = undefined
+    }
+  }
+  return { url: location.href, title, description, image }
+}
+
+async function saveBookmarkFromTab(tabId) {
+  if (!tabId) return { ok: false, error: 'no_tab' }
+  let page
+  try {
+    const results = await chrome.scripting.executeScript({ target: { tabId }, func: pageExtractPreview })
+    page = results?.[0]?.result
+  } catch {
+    return { ok: false, error: 'page_unavailable' }
+  }
+  if (!page?.url || !/^https?:/.test(page.url)) {
+    return { ok: false, error: 'unsupported_page' }
+  }
+  return vaultRequest('saveBookmark', {
+    title: page.title || page.url,
+    url: page.url,
+    description: page.description,
+    imageUrl: page.image
+  })
 }
 
 /** Injected into the page — must stay self-contained (no outer scope). */

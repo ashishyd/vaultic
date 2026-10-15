@@ -58,6 +58,24 @@
       .login strong { font-size: 13px; }
       .login span { font-size: 11px; color: #8B99B8; }
       .empty { font-size: 12px; color: #8B99B8; padding: 8px 2px; }
+      .save-bookmark {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        border: 1px solid #243044;
+        background: #111827;
+        color: #E7ECF7;
+        border-radius: 10px;
+        padding: 8px 10px;
+        margin-bottom: 10px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .save-bookmark:hover { border-color: #2DD4BF; }
+      .save-bookmark:disabled { cursor: default; opacity: 0.6; }
+      .save-bookmark .label { display: flex; align-items: center; gap: 6px; }
       footer {
         display: flex;
         gap: 8px;
@@ -83,6 +101,9 @@
     </header>
     <main>
       <p id="page" class="hint"></p>
+      <button type="button" id="saveBookmark" class="save-bookmark" hidden>
+        <span class="label" id="saveBookmarkLabel">Save this page to Vaultic</span>
+      </button>
       <div id="list"></div>
     </main>
     <footer>

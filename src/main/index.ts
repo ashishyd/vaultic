@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, powerMonitor } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { ensureEnvLoaded } from './vault/env'
 import { registerVaultIpcHandlers } from './vault/ipc-handlers'
 import { vaultStore } from './vault/vault-store'
 import { readSettings } from './vault/settings'
@@ -65,6 +66,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  ensureEnvLoaded()
   registerVaultIpcHandlers()
   createWindow()
   startAutoLockWatcher()

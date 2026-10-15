@@ -84,6 +84,7 @@ interface BookmarkRecord {
   lastVisitedAt?: number
   previewTitle?: string
   previewDescription?: string
+  previewImage?: string
   previewFetchedAt?: number
 }
 
@@ -188,6 +189,7 @@ export interface BookmarkSummary {
   lastVisitedAt?: number
   previewTitle?: string
   previewDescription?: string
+  previewImage?: string
   previewFetchedAt?: number
 }
 
@@ -211,6 +213,7 @@ function toBookmarkSummary(r: BookmarkRecord): BookmarkSummary {
     lastVisitedAt: r.lastVisitedAt,
     previewTitle: r.previewTitle,
     previewDescription: r.previewDescription,
+    previewImage: r.previewImage,
     previewFetchedAt: r.previewFetchedAt
   }
 }
@@ -661,13 +664,14 @@ class VaultStore {
   /** Biometric-gated in ipc-handlers before this is called (the fetch itself needs the real URL). */
   async saveBookmarkPreview(
     id: string,
-    preview: { title?: string; description?: string }
+    preview: { title?: string; description?: string; image?: string }
   ): Promise<BookmarkSummary | null> {
     const data = this.ensureUnlocked()
     const b = data.bookmarks.find((x) => x.id === id && !x.deletedAt)
     if (!b) return null
     b.previewTitle = preview.title
     b.previewDescription = preview.description
+    b.previewImage = preview.image
     b.previewFetchedAt = Date.now()
     await this.persist()
     return toBookmarkSummary(b)
@@ -1131,7 +1135,26 @@ class VaultStore {
    */
   async restoreVaultFromBackup(sourcePath: string, masterPassword: string): Promise<void> {
     const raw = await readFile(sourcePath, 'utf8')
-    const encrypted: EncryptedVault = JSON.parse(raw)
+    const companion = sourcePath.replace(/\.enc$/i, '') + '.recovery.enc'
+    const recoveryRaw = existsSync(companion) ? await readFile(companion, 'utf8') : null
+    await this.restoreVaultFromBlobs(raw, recoveryRaw, masterPassword)
+  }
+
+  /** The vault's raw ciphertext JSON (and recovery companion, if any) — same bytes a local backup copies. */
+  async getBackupBlobs(): Promise<{ vaultJson: string; recoveryJson: string | null } | null> {
+    if (!existsSync(vaultPath())) return null
+    const vaultJson = await readFile(vaultPath(), 'utf8')
+    const recoveryJson = existsSync(recoveryPath()) ? await readFile(recoveryPath(), 'utf8') : null
+    return { vaultJson, recoveryJson }
+  }
+
+  /**
+   * Replace the on-disk vault with the given ciphertext JSON after verifying the
+   * password. Locks the in-memory session — caller must unlock again. Shared by
+   * local-file restore and cloud-sync restore.
+   */
+  async restoreVaultFromBlobs(vaultJson: string, recoveryJson: string | null, masterPassword: string): Promise<void> {
+    const encrypted: EncryptedVault = JSON.parse(vaultJson)
     // Throws if password is wrong or file is corrupt.
     await decryptVault(encrypted, masterPassword)
 
@@ -1139,10 +1162,8 @@ class VaultStore {
     if (!existsSync(dir)) await mkdir(dir, { recursive: true })
     await writeFileAtomic(vaultPath(), JSON.stringify(encrypted))
 
-    // Companion recovery file from our backup naming convention.
-    const companion = sourcePath.replace(/\.enc$/i, '') + '.recovery.enc'
-    if (existsSync(companion)) {
-      await writeFileAtomic(recoveryPath(), await readFile(companion, 'utf8'))
+    if (recoveryJson) {
+      await writeFileAtomic(recoveryPath(), recoveryJson)
     }
 
     this.lock()

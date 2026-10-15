@@ -50,7 +50,17 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
   const [restorePassword, setRestorePassword] = useState('')
   const [restoreError, setRestoreError] = useState<string | null>(null)
 
-  useEscapeKey(onClose, !showRecovery && !confirmForgetTouchId && !showChangePassword && !showRestore)
+  const [cloudConfigured, setCloudConfigured] = useState(false)
+  const [cloudUpdatedAt, setCloudUpdatedAt] = useState<number | null>(null)
+  const [cloudSyncing, setCloudSyncing] = useState(false)
+  const [showCloudRestore, setShowCloudRestore] = useState(false)
+  const [cloudRestorePassword, setCloudRestorePassword] = useState('')
+  const [cloudRestoreError, setCloudRestoreError] = useState<string | null>(null)
+
+  useEscapeKey(
+    onClose,
+    !showRecovery && !confirmForgetTouchId && !showChangePassword && !showRestore && !showCloudRestore
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -59,8 +69,9 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
       window.vaultAPI.hasCachedKey(),
       window.vaultAPI.getStorageInfo(),
       window.vaultAPI.getAppInfo(),
-      window.vaultAPI.getBridgeInfo()
-    ]).then(([settings, cached, info, appInfo, bridge]) => {
+      window.vaultAPI.getBridgeInfo(),
+      window.vaultAPI.cloudSyncStatus()
+    ]).then(([settings, cached, info, appInfo, bridge, cloud]) => {
       if (!cancelled) {
         setAutoLockMinutes(settings.autoLockMinutes)
         setHasCachedKey(cached)
@@ -68,6 +79,8 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
         setAppVersion(appInfo.version)
         setBridgeToken(bridge.token)
         setExtensionId(bridge.extensionId)
+        setCloudConfigured(cloud.configured)
+        setCloudUpdatedAt(cloud.updatedAt)
         setLoading(false)
       }
     })
@@ -144,6 +157,46 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
       }
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function handleCloudPush(): Promise<void> {
+    setCloudSyncing(true)
+    try {
+      const result = await window.vaultAPI.cloudSyncPush()
+      if (result.success) {
+        const status = await window.vaultAPI.cloudSyncStatus()
+        setCloudUpdatedAt(status.updatedAt)
+        push('Vault synced to the cloud', 'success')
+      } else {
+        push(result.error ?? 'Cloud sync failed', 'error')
+      }
+    } finally {
+      setCloudSyncing(false)
+    }
+  }
+
+  function handleOpenCloudRestore(): void {
+    setCloudRestorePassword('')
+    setCloudRestoreError(null)
+    setShowCloudRestore(true)
+  }
+
+  async function handleCloudRestore(): Promise<void> {
+    if (!cloudRestorePassword) return
+    setCloudSyncing(true)
+    setCloudRestoreError(null)
+    try {
+      const result = await window.vaultAPI.cloudSyncPull(cloudRestorePassword)
+      if (result.success) {
+        setShowCloudRestore(false)
+        onClose()
+        push('Vault restored from the cloud — unlock with that master password', 'success')
+      } else {
+        setCloudRestoreError(result.error ?? 'Restore failed')
+      }
+    } finally {
+      setCloudSyncing(false)
     }
   }
 
@@ -285,6 +338,41 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
                   Change master password…
                 </button>
               </div>
+            </div>
+
+            <div className="border-t border-vt-border pt-4">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-vt-muted">Cloud sync</h3>
+              {cloudConfigured ? (
+                <>
+                  <p className="mb-3 text-xs text-vt-muted">
+                    {cloudUpdatedAt
+                      ? `Last synced ${new Date(cloudUpdatedAt).toLocaleString()}. `
+                      : 'Not synced yet. '}
+                    Your vault stays encrypted end to end — the cloud only ever sees the same ciphertext as a local
+                    backup file.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => void handleCloudPush()}
+                      disabled={cloudSyncing}
+                      className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2 disabled:opacity-50"
+                    >
+                      {cloudSyncing ? 'Syncing…' : 'Sync to cloud…'}
+                    </button>
+                    <button
+                      onClick={handleOpenCloudRestore}
+                      disabled={cloudSyncing}
+                      className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2 disabled:opacity-50"
+                    >
+                      Restore from cloud…
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-vt-muted">
+                  Cloud sync isn&apos;t configured (no DATABASE_URL). Run the Neon setup for this app to enable it.
+                </p>
+              )}
             </div>
 
             <div className="border-t border-vt-border pt-4">
@@ -435,6 +523,41 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
                   {busy ? 'Saving…' : 'Change password'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCloudRestore && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-2xl border border-vt-border bg-vt-surface p-6">
+            <h3 className="mb-1 text-sm font-semibold">Restore vault from cloud</h3>
+            <p className="mb-3 text-xs text-vt-muted">
+              This replaces your current vault with the last cloud sync. You&apos;ll be locked out and must unlock
+              with that backup&apos;s master password.
+            </p>
+            <input
+              type="password"
+              placeholder="Cloud backup master password"
+              value={cloudRestorePassword}
+              onChange={(e) => setCloudRestorePassword(e.target.value)}
+              className="mb-2 w-full rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2 text-sm outline-none focus:border-vt-teal"
+            />
+            {cloudRestoreError && <p className="mb-2 text-xs text-vt-danger">{cloudRestoreError}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowCloudRestore(false)}
+                className="rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleCloudRestore()}
+                disabled={cloudSyncing || !cloudRestorePassword}
+                className="rounded-lg bg-vt-danger px-3 py-1.5 text-sm font-medium text-vt-bg disabled:opacity-50"
+              >
+                {cloudSyncing ? 'Restoring…' : 'Restore'}
+              </button>
             </div>
           </div>
         </div>

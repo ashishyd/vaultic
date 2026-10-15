@@ -126,6 +126,16 @@ async function handle(msg) {
     })
     return { ok: result.status === 201, status: result.status, ...result.data }
   }
+  if (type === 'saveBookmark') {
+    const result = await bridgeRequest(config, 'POST', '/v1/bookmarks', {
+      title: msg.title,
+      url: msg.url,
+      folder: msg.folder,
+      description: msg.description,
+      imageUrl: msg.imageUrl
+    })
+    return { ok: result.status === 201 || result.status === 200, status: result.status, ...result.data }
+  }
   return { ok: false, error: 'unknown_type' }
 }
 

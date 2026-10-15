@@ -1,6 +1,8 @@
 const statusEl = document.getElementById('status')
 const listEl = document.getElementById('list')
 const pageEl = document.getElementById('page')
+const saveBookmarkBtn = document.getElementById('saveBookmark')
+const saveBookmarkLabel = document.getElementById('saveBookmarkLabel')
 
 async function activeTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -14,6 +16,7 @@ function setStatus(text, kind) {
 
 async function load() {
   listEl.innerHTML = ''
+  saveBookmarkBtn.hidden = true
   const tab = await activeTab()
   if (!tab?.url || !/^https?:/.test(tab.url)) {
     pageEl.textContent = 'Open a website to see matching logins.'
@@ -39,6 +42,7 @@ async function load() {
     return
   }
   setStatus('Unlocked', 'ok')
+  setUpSaveBookmark(tab)
 
   const result = await chrome.runtime.sendMessage({ type: 'findLogins', url: tab.url })
   const logins = result?.logins || []
@@ -78,6 +82,28 @@ async function load() {
       window.close()
     })
     listEl.appendChild(btn)
+  }
+}
+
+function setUpSaveBookmark(tab) {
+  saveBookmarkBtn.hidden = false
+  saveBookmarkBtn.disabled = false
+  saveBookmarkLabel.textContent = 'Save this page to Vaultic'
+  saveBookmarkBtn.onclick = async () => {
+    saveBookmarkBtn.disabled = true
+    saveBookmarkLabel.textContent = 'Saving — Touch ID…'
+    const result = await chrome.runtime.sendMessage({ type: 'saveBookmarkFromTab', tabId: tab.id })
+    if (result?.ok && result?.alreadyExists) {
+      saveBookmarkLabel.textContent = 'Already saved'
+    } else if (result?.ok) {
+      saveBookmarkLabel.textContent = 'Saved to Vaultic ✓'
+    } else if (result?.error === 'auth_declined') {
+      saveBookmarkLabel.textContent = 'Touch ID cancelled — try again'
+      saveBookmarkBtn.disabled = false
+    } else {
+      saveBookmarkLabel.textContent = 'Could not save — try again'
+      saveBookmarkBtn.disabled = false
+    }
   }
 }
 

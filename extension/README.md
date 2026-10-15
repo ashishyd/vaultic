@@ -27,6 +27,7 @@ Local-first browser companion for the Vaultic desktop app — fill logins on web
 |--------|-----|
 | Fill a login | Click the teal **V** on a password field, or open the toolbar popup and pick a login |
 | Save a login | Submit a login form — Vaultic offers **Save to Vaultic?** |
+| Save a bookmark | Open the toolbar popup → **Save this page to Vaultic**. Pulls the title, description and preview image straight from the loaded tab (no second page fetch) |
 | TOTP | If the login has a TOTP secret, the code is copied when you fill |
 
 Filling and saving are gated by Touch ID when available (same as the desktop app). The vault must be **unlocked**.

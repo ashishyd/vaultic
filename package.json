@@ -16,8 +16,12 @@
     "extension:open": "open -a 'Google Chrome' chrome://extensions && open extension"
   },
   "dependencies": {
+    "@neon/config": "^1.9.1",
+    "@neon/env": "^1.6.2",
+    "dotenv": "^18.0.8",
     "keytar": "^7.9.0",
     "pdf-parse": "^1.1.1",
+    "pg": "^8.23.1",
     "zustand": "^4.5.5"
   },
   "devDependencies": {
@@ -25,6 +29,7 @@
     "@electron-toolkit/utils": "^3.0.0",
     "@types/node": "^22.5.5",
     "@types/pdf-parse": "^1.1.5",
+    "@types/pg": "^8.23.1",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

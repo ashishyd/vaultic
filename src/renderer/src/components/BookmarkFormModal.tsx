@@ -188,15 +188,26 @@ export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.
                         : 'Fetch preview'}
                   </button>
                 </div>
-                {existing?.previewTitle || existing?.previewDescription ? (
-                  <div className="rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2 text-xs">
-                    {existing.previewTitle && <p className="font-medium">{existing.previewTitle}</p>}
-                    {existing.previewDescription && (
-                      <p className="mt-0.5 text-vt-muted">{existing.previewDescription}</p>
+                {existing?.previewTitle || existing?.previewDescription || existing?.previewImage ? (
+                  <div className="flex gap-2 rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2 text-xs">
+                    {existing.previewImage && (
+                      <img
+                        src={existing.previewImage}
+                        alt=""
+                        className="h-12 w-12 shrink-0 rounded-md border border-vt-border object-cover"
+                      />
                     )}
+                    <div className="min-w-0">
+                      {existing.previewTitle && <p className="font-medium">{existing.previewTitle}</p>}
+                      {existing.previewDescription && (
+                        <p className="mt-0.5 text-vt-muted">{existing.previewDescription}</p>
+                      )}
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-vt-muted">No preview fetched yet — pulls the page's title and description.</p>
+                  <p className="text-xs text-vt-muted">
+                    No preview fetched yet — pulls the page's title, description and thumbnail image.
+                  </p>
                 )}
               </div>
             )}

@@ -125,22 +125,35 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
                 key={b.id}
                 className="flex items-center justify-between gap-3 rounded-xl border border-vt-border px-4 py-3"
               >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{b.title}</p>
-                  <p className="truncate text-xs text-vt-muted">
-                    {b.host}
-                    {b.folder && <span className="text-vt-muted/70"> · {b.folder}</span>}
-                  </p>
-                  {b.previewDescription && (
-                    <p className="mt-0.5 truncate text-xs text-vt-muted/70" title={b.previewDescription}>
-                      {b.previewDescription}
-                    </p>
+                <div className="flex min-w-0 items-center gap-3">
+                  {b.previewImage ? (
+                    <img
+                      src={b.previewImage}
+                      alt=""
+                      className="h-10 w-10 shrink-0 rounded-lg border border-vt-border object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-vt-border bg-vt-surface2 text-xs font-medium text-vt-muted">
+                      {b.host.replace(/^www\./, '').charAt(0).toUpperCase()}
+                    </div>
                   )}
-                  <p className="mt-0.5 text-[11px] text-vt-muted/60">
-                    {b.visitCount > 0 && b.lastVisitedAt
-                      ? `Visited ${b.visitCount}× · last ${formatLastVisited(b.lastVisitedAt)}`
-                      : 'Not visited yet'}
-                  </p>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{b.title}</p>
+                    <p className="truncate text-xs text-vt-muted">
+                      {b.host}
+                      {b.folder && <span className="text-vt-muted/70"> · {b.folder}</span>}
+                    </p>
+                    {b.previewDescription && (
+                      <p className="mt-0.5 truncate text-xs text-vt-muted/70" title={b.previewDescription}>
+                        {b.previewDescription}
+                      </p>
+                    )}
+                    <p className="mt-0.5 text-[11px] text-vt-muted/60">
+                      {b.visitCount > 0 && b.lastVisitedAt
+                        ? `Visited ${b.visitCount}× · last ${formatLastVisited(b.lastVisitedAt)}`
+                        : 'Not visited yet'}
+                    </p>
+                  </div>
                 </div>
                 <div className="inline-flex shrink-0 gap-0.5">
                   <IconButton onClick={() => handleOpen(b.id)} title="Open (Touch ID)" tone="teal">
