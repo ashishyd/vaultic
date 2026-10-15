@@ -13,6 +13,7 @@ import {
   type EncryptedVault
 } from './crypto'
 import { generateTotpCode, normalizeTotpSecret } from './totp'
+import type { LinkCheckStatus } from './link-preview'
 
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000 // permanently purge soft-deletes after 30 days
 const TRASH_RETENTION_MS_INTERNAL = TRASH_RETENTION_MS
@@ -86,6 +87,11 @@ interface BookmarkRecord {
   previewDescription?: string
   previewImage?: string
   previewFetchedAt?: number
+  /** Explicit per-bookmark override; when unset, sensitivity is inherited from the folder. */
+  isSensitive?: boolean
+  /** From the most recent preview fetch or "check for dead links" pass. */
+  linkStatus?: LinkCheckStatus
+  linkCheckedAt?: number
 }
 
 export interface LabelSummary {
@@ -191,6 +197,11 @@ export interface BookmarkSummary {
   previewDescription?: string
   previewImage?: string
   previewFetchedAt?: number
+  /** Effective sensitivity (own override, else inherited from the folder) — drives blurring in the UI. */
+  sensitive: boolean
+  isSensitive?: boolean
+  linkStatus?: LinkCheckStatus
+  linkCheckedAt?: number
 }
 
 function hostOf(url: string): string {
@@ -201,7 +212,8 @@ function hostOf(url: string): string {
   }
 }
 
-function toBookmarkSummary(r: BookmarkRecord): BookmarkSummary {
+function toBookmarkSummary(r: BookmarkRecord, sensitiveFolders: string[]): BookmarkSummary {
+  const sensitive = r.isSensitive ?? (r.folder ? sensitiveFolders.includes(r.folder) : false)
   return {
     id: r.id,
     title: r.title,
@@ -214,7 +226,11 @@ function toBookmarkSummary(r: BookmarkRecord): BookmarkSummary {
     previewTitle: r.previewTitle,
     previewDescription: r.previewDescription,
     previewImage: r.previewImage,
-    previewFetchedAt: r.previewFetchedAt
+    previewFetchedAt: r.previewFetchedAt,
+    sensitive,
+    isSensitive: r.isSensitive,
+    linkStatus: r.linkStatus,
+    linkCheckedAt: r.linkCheckedAt
   }
 }
 
@@ -277,6 +293,8 @@ interface VaultData {
   recoveryCodes: RecoveryCodeRecord[]
   secureNotes: SecureNoteRecord[]
   bookmarks: BookmarkRecord[]
+  /** Folder names whose bookmarks are blurred by default until revealed in the UI. */
+  sensitiveFolders: string[]
 }
 
 const EMPTY_VAULT: VaultData = {
@@ -285,7 +303,8 @@ const EMPTY_VAULT: VaultData = {
   labels: [],
   recoveryCodes: [],
   secureNotes: [],
-  bookmarks: []
+  bookmarks: [],
+  sensitiveFolders: []
 }
 
 function vaultPath(): string {
@@ -316,6 +335,10 @@ class VaultStore {
   private data: VaultData | null = null
   private key: Buffer | null = null
   private salt: Buffer | null = null
+  // Serializes writes so concurrent mutators (e.g. several background preview
+  // fetches finishing around the same time) can't race each other's persist()
+  // and have an older snapshot's write clobber a newer one on disk.
+  private persistChain: Promise<void> = Promise.resolve()
 
   get isUnlocked(): boolean {
     return this.data !== null && this.key !== null
@@ -344,6 +367,7 @@ class VaultStore {
     if (!data.recoveryCodes) data.recoveryCodes = [] // vaults created before recovery codes existed
     if (!data.secureNotes) data.secureNotes = [] // vaults created before secure notes existed
     if (!data.bookmarks) data.bookmarks = [] // vaults created before bookmarks existed
+    if (!data.sensitiveFolders) data.sensitiveFolders = [] // vaults created before sensitivity existed
     this.data = data
     this.key = key
     this.salt = Buffer.from(encrypted.salt, 'hex')
@@ -360,6 +384,7 @@ class VaultStore {
     if (!data.recoveryCodes) data.recoveryCodes = [] // vaults created before recovery codes existed
     if (!data.secureNotes) data.secureNotes = [] // vaults created before secure notes existed
     if (!data.bookmarks) data.bookmarks = [] // vaults created before bookmarks existed
+    if (!data.sensitiveFolders) data.sensitiveFolders = [] // vaults created before sensitivity existed
     this.data = data
     this.key = key
     this.salt = Buffer.from(encrypted.salt, 'hex')
@@ -429,6 +454,17 @@ class VaultStore {
   }
 
   private async persist(): Promise<void> {
+    // Chain onto the previous write so writes complete strictly in call order —
+    // each persist() snapshots `this.data` synchronously before its first await,
+    // so chaining guarantees the last write on disk is the most recent state.
+    const next = this.persistChain.then(() => this.persistNow())
+    // Swallow here so one failed write doesn't permanently break the chain for
+    // later callers; each caller still sees its own rejection via `next`.
+    this.persistChain = next.catch(() => {})
+    return next
+  }
+
+  private async persistNow(): Promise<void> {
     if (!this.data || !this.key || !this.salt) throw new Error('Vault is locked')
     const dir = app.getPath('userData')
     if (!existsSync(dir)) await mkdir(dir, { recursive: true })
@@ -478,9 +514,8 @@ class VaultStore {
   }
 
   listBookmarks(): BookmarkSummary[] {
-    return this.ensureUnlocked()
-      .bookmarks.filter((b) => !b.deletedAt)
-      .map(toBookmarkSummary)
+    const data = this.ensureUnlocked()
+    return data.bookmarks.filter((b) => !b.deletedAt).map((b) => toBookmarkSummary(b, data.sensitiveFolders))
   }
 
   /** Biometric-gated in ipc-handlers before this is called. */
@@ -492,6 +527,62 @@ class VaultStore {
   /** Normalized URLs already stored — lets the import UI flag duplicates without exposing them. */
   hasBookmarkUrl(url: string): boolean {
     return this.ensureUnlocked().bookmarks.some((b) => !b.deletedAt && b.url === url)
+  }
+
+  /**
+   * Bookmarks never attempted for a preview yet — feeds the background backfill
+   * queue. Biometric-gated in ipc-handlers before this is called (returns real URLs).
+   */
+  listBookmarksMissingPreview(): Array<{ id: string; url: string; title: string }> {
+    return this.ensureUnlocked()
+      .bookmarks.filter((b) => !b.deletedAt && !b.previewFetchedAt)
+      .map((b) => ({ id: b.id, url: b.url, title: b.title }))
+  }
+
+  /**
+   * Bookmarks with no thumbnail yet, regardless of past attempts — feeds the
+   * manual "Refetch all" button, so a prior failed/empty attempt gets retried
+   * (worthwhile after extraction logic improves). Biometric-gated in
+   * ipc-handlers before this is called (returns real URLs).
+   */
+  listBookmarksWithoutImage(): Array<{ id: string; url: string; title: string }> {
+    return this.ensureUnlocked()
+      .bookmarks.filter((b) => !b.deletedAt && !b.previewImage)
+      .map((b) => ({ id: b.id, url: b.url, title: b.title }))
+  }
+
+  /**
+   * Every live bookmark — feeds the manual "Check for dead links" action, which
+   * (unlike the preview backfill) must re-check links that already have a fine
+   * thumbnail, since a site can die well after its preview was first fetched.
+   * Biometric-gated in ipc-handlers before this is called (returns real URLs).
+   */
+  listAllBookmarksForLinkCheck(): Array<{ id: string; url: string; title: string }> {
+    return this.ensureUnlocked()
+      .bookmarks.filter((b) => !b.deletedAt)
+      .map((b) => ({ id: b.id, url: b.url, title: b.title }))
+  }
+
+  listSensitiveFolders(): string[] {
+    return [...this.ensureUnlocked().sensitiveFolders]
+  }
+
+  async setFolderSensitive(folder: string, sensitive: boolean): Promise<void> {
+    const data = this.ensureUnlocked()
+    const next = new Set(data.sensitiveFolders)
+    if (sensitive) next.add(folder)
+    else next.delete(folder)
+    data.sensitiveFolders = [...next]
+    await this.persist()
+  }
+
+  async setBookmarkSensitive(id: string, sensitive: boolean): Promise<BookmarkSummary | null> {
+    const data = this.ensureUnlocked()
+    const b = data.bookmarks.find((x) => x.id === id && !x.deletedAt)
+    if (!b) return null
+    b.isSensitive = sensitive
+    await this.persist()
+    return toBookmarkSummary(b, data.sensitiveFolders)
   }
 
   /** Biometric-gated in ipc-handlers before this is called. */
@@ -614,25 +705,26 @@ class VaultStore {
     const full: BookmarkRecord = { ...entry, id: randomUUID(), createdAt: now, updatedAt: now }
     data.bookmarks.push(full)
     await this.persist()
-    return toBookmarkSummary(full)
+    return toBookmarkSummary(full, data.sensitiveFolders)
   }
 
   /** Skips URLs already in the vault. Returns how many were added vs skipped. */
   async addBookmarksBatch(
     entries: Array<{ title: string; url: string; folder?: string }>
-  ): Promise<{ added: number; skipped: number }> {
+  ): Promise<{ added: number; skipped: number; addedItems: Array<{ id: string; url: string; title: string }> }> {
     const data = this.ensureUnlocked()
     const seen = new Set(data.bookmarks.filter((b) => !b.deletedAt).map((b) => b.url))
     const now = Date.now()
-    let added = 0
+    const addedItems: Array<{ id: string; url: string; title: string }> = []
     for (const e of entries) {
       if (seen.has(e.url)) continue
       seen.add(e.url)
-      data.bookmarks.push({ ...e, id: randomUUID(), createdAt: now, updatedAt: now })
-      added++
+      const id = randomUUID()
+      data.bookmarks.push({ ...e, id, createdAt: now, updatedAt: now })
+      addedItems.push({ id, url: e.url, title: e.title })
     }
-    if (added > 0) await this.persist()
-    return { added, skipped: entries.length - added }
+    if (addedItems.length > 0) await this.persist()
+    return { added: addedItems.length, skipped: entries.length - addedItems.length, addedItems }
   }
 
   /** Biometric-gated in ipc-handlers before this is called. */
@@ -648,7 +740,7 @@ class VaultStore {
     b.folder = patch.folder
     b.updatedAt = Date.now()
     await this.persist()
-    return toBookmarkSummary(b)
+    return toBookmarkSummary(b, data.sensitiveFolders)
   }
 
   /** Called after a bookmark is actually opened (normal or incognito), never on a failed/cancelled open. */
@@ -664,7 +756,8 @@ class VaultStore {
   /** Biometric-gated in ipc-handlers before this is called (the fetch itself needs the real URL). */
   async saveBookmarkPreview(
     id: string,
-    preview: { title?: string; description?: string; image?: string }
+    preview: { title?: string; description?: string; image?: string },
+    linkStatus?: LinkCheckStatus
   ): Promise<BookmarkSummary | null> {
     const data = this.ensureUnlocked()
     const b = data.bookmarks.find((x) => x.id === id && !x.deletedAt)
@@ -673,8 +766,18 @@ class VaultStore {
     b.previewDescription = preview.description
     b.previewImage = preview.image
     b.previewFetchedAt = Date.now()
+    if (linkStatus) {
+      b.linkStatus = linkStatus
+      b.linkCheckedAt = Date.now()
+    }
+    // The stored title defaults to the raw URL when none was given — once we have a
+    // real page title, adopt it so the list and edit form show it everywhere, not
+    // just in the preview box.
+    if (preview.title && (!b.title || b.title === b.url)) {
+      b.title = preview.title
+    }
     await this.persist()
-    return toBookmarkSummary(b)
+    return toBookmarkSummary(b, data.sensitiveFolders)
   }
 
   async deleteBookmark(id: string): Promise<void> {

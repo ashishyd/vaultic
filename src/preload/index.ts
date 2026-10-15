@@ -34,6 +34,12 @@ const vaultAPI: VaultAPI = {
   openBookmark: (id) => ipcRenderer.invoke('vault:openBookmark', id),
   openBookmarkIncognito: (id) => ipcRenderer.invoke('vault:openBookmarkIncognito', id),
   fetchBookmarkPreview: (id) => ipcRenderer.invoke('vault:fetchBookmarkPreview', id),
+  fetchMissingBookmarkPreviews: () => ipcRenderer.invoke('vault:fetchMissingBookmarkPreviews'),
+  refetchAllBookmarkPreviews: () => ipcRenderer.invoke('vault:refetchAllBookmarkPreviews'),
+  checkDeadLinks: () => ipcRenderer.invoke('vault:checkDeadLinks'),
+  listSensitiveFolders: () => ipcRenderer.invoke('vault:listSensitiveFolders'),
+  setFolderSensitive: (folder, sensitive) => ipcRenderer.invoke('vault:setFolderSensitive', folder, sensitive),
+  setBookmarkSensitive: (id, sensitive) => ipcRenderer.invoke('vault:setBookmarkSensitive', id, sensitive),
   updateBookmark: (id, patch) => ipcRenderer.invoke('vault:updateBookmark', id, patch),
   scanBrowserBookmarks: () => ipcRenderer.invoke('vault:scanBrowserBookmarks'),
   importBookmarks: (entries) => ipcRenderer.invoke('vault:importBookmarks', entries),
@@ -136,6 +142,12 @@ const vaultAPI: VaultAPI = {
     const listener = (): void => callback()
     ipcRenderer.on('vault:autoLocked', listener)
     return () => ipcRenderer.removeListener('vault:autoLocked', listener)
+  },
+
+  onBookmarksUpdated: (callback) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('vault:bookmarksUpdated', listener)
+    return () => ipcRenderer.removeListener('vault:bookmarksUpdated', listener)
   },
 
   hasRecovery: () => ipcRenderer.invoke('vault:hasRecovery'),

@@ -93,6 +93,12 @@ export interface BookmarkSummary {
   previewDescription?: string
   previewImage?: string
   previewFetchedAt?: number
+  /** Effective sensitivity (own override, else inherited from the folder) — blur the thumbnail when true. */
+  sensitive: boolean
+  isSensitive?: boolean
+  /** 'dead' = high-confidence gone (safe to suggest deleting); 'blocked' = inconclusive, never treated as dead. */
+  linkStatus?: 'ok' | 'dead' | 'blocked'
+  linkCheckedAt?: number
 }
 
 export interface BookmarkInput {
@@ -186,6 +192,14 @@ export interface VaultAPI {
   openBookmark: (id: string) => Promise<boolean>
   openBookmarkIncognito: (id: string) => Promise<{ ok: boolean; reason?: 'auth' | 'no-browser' }>
   fetchBookmarkPreview: (id: string) => Promise<BookmarkSummary | null>
+  fetchMissingBookmarkPreviews: () => Promise<{ success: boolean; queued?: number; error?: string }>
+  /** Re-tries every bookmark still missing a thumbnail, including past empty attempts. */
+  refetchAllBookmarkPreviews: () => Promise<{ success: boolean; queued?: number; error?: string }>
+  /** Re-verifies every bookmark's liveness (not just ones missing a thumbnail), flagging dead links. */
+  checkDeadLinks: () => Promise<{ success: boolean; queued?: number; error?: string }>
+  listSensitiveFolders: () => Promise<string[]>
+  setFolderSensitive: (folder: string, sensitive: boolean) => Promise<{ success: boolean; error?: string }>
+  setBookmarkSensitive: (id: string, sensitive: boolean) => Promise<BookmarkSummary | null>
   updateBookmark: (id: string, patch: BookmarkInput) => Promise<BookmarkSummary | null>
   scanBrowserBookmarks: () => Promise<BrowserBookmarkScanResult>
   importBookmarks: (entries: BookmarkInput[]) => Promise<{ added: number; skipped: number }>
@@ -362,6 +376,9 @@ export interface VaultAPI {
 
   /** Fires when the main process auto-locks the vault due to inactivity. Returns an unsubscribe function. */
   onAutoLocked: (callback: () => void) => () => void
+
+  /** Fires when background bookmark-preview fetches finish (debounced). Returns an unsubscribe function. */
+  onBookmarksUpdated: (callback: () => void) => () => void
 
   // Emergency recovery access — a second, independent unlock path (separate
   // passphrase + keyslot) in case the master password is forgotten.

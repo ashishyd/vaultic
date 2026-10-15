@@ -256,7 +256,7 @@ async function handleRequest(
     // (no CORS restriction here) rather than re-fetching the whole page a second time.
     const description = body.description?.trim().slice(0, 300) || undefined
     if (description || body.imageUrl) {
-      const image = body.imageUrl ? await fetchImageAsDataUrl(body.imageUrl) : undefined
+      const image = body.imageUrl ? await fetchImageAsDataUrl(body.imageUrl, pageUrl) : undefined
       if (description || image) {
         await vaultStore.saveBookmarkPreview(summary.id, { title, description, image })
       }

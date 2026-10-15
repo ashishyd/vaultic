@@ -14,6 +14,7 @@ import { getFrontmostChromeTabUrl, getFrontmostBrowserTabUrl } from './chrome'
 import { scanBrowserBookmarks } from './chrome-bookmarks'
 import { fetchLinkPreview } from './link-preview'
 import { openUrlIncognito } from './incognito'
+import { queuePreviewFetch, queuePreviewFetches } from './preview-queue'
 import { getCloudSyncStatus, pushVaultToCloud, pullVaultFromCloud } from './cloud-sync'
 import { getBridgeInfo } from './browser-bridge'
 import { installNativeMessagingHost, getNativeHostInstallInfo } from './native-host-install'
@@ -295,10 +296,18 @@ export function registerVaultIpcHandlers(): void {
   // --- Bookmarks ---
   ipcMain.handle('vault:listBookmarks', () => vaultStore.listBookmarks())
 
-  ipcMain.handle('vault:addBookmark', (_e, entry: { title: string; url: string; folder?: string }) => {
+  ipcMain.handle('vault:addBookmark', async (_e, entry: { title: string; url: string; folder?: string }) => {
     const url = normalizeBookmarkUrl(entry.url)
     if (!url) throw new Error('Enter a valid link')
-    return vaultStore.addBookmark({ title: entry.title.trim() || url, url, folder: entry.folder?.trim() || undefined })
+    const summary = await vaultStore.addBookmark({
+      title: entry.title.trim() || url,
+      url,
+      folder: entry.folder?.trim() || undefined
+    })
+    // The URL was just typed/pasted by the user themselves — enriching it right
+    // away isn't a new "reveal", so this doesn't need its own auth prompt.
+    queuePreviewFetch(summary.id, url, summary.title)
+    return summary
   })
 
   ipcMain.handle('vault:deleteBookmark', (_e, id: string) => vaultStore.deleteBookmark(id))
@@ -348,10 +357,47 @@ export function registerVaultIpcHandlers(): void {
     if (!ok) return null
     const b = vaultStore.getBookmark(id)
     if (!b) return null
-    const preview = await fetchLinkPreview(b.url)
-    if (!preview) return null
-    return vaultStore.saveBookmarkPreview(id, preview)
+    const { preview, status } = await fetchLinkPreview(b.url, b.title)
+    // Record the attempt either way so a page with no metadata isn't silently
+    // re-tried forever; the renderer tells "nothing found" apart from "fetched".
+    return vaultStore.saveBookmarkPreview(id, preview ?? {}, status)
   })
+
+  ipcMain.handle('vault:fetchMissingBookmarkPreviews', async () => {
+    const ok = await requireAuth('fetch previews for your bookmarks')
+    if (!ok) return { success: false as const, error: 'Authentication cancelled' }
+    const missing = vaultStore.listBookmarksMissingPreview()
+    queuePreviewFetches(missing)
+    return { success: true as const, queued: missing.length }
+  })
+
+  ipcMain.handle('vault:refetchAllBookmarkPreviews', async () => {
+    const ok = await requireAuth('fetch previews for your bookmarks')
+    if (!ok) return { success: false as const, error: 'Authentication cancelled' }
+    const missing = vaultStore.listBookmarksWithoutImage()
+    queuePreviewFetches(missing)
+    return { success: true as const, queued: missing.length }
+  })
+
+  ipcMain.handle('vault:checkDeadLinks', async () => {
+    const ok = await requireAuth('check your bookmarks for dead links')
+    if (!ok) return { success: false as const, error: 'Authentication cancelled' }
+    const all = vaultStore.listAllBookmarksForLinkCheck()
+    queuePreviewFetches(all)
+    return { success: true as const, queued: all.length }
+  })
+
+  ipcMain.handle('vault:listSensitiveFolders', () => vaultStore.listSensitiveFolders())
+
+  ipcMain.handle('vault:setFolderSensitive', async (_e, folder: string, sensitive: boolean) => {
+    if (typeof folder !== 'string' || !folder.trim()) return { success: false as const, error: 'No folder' }
+    await vaultStore.setFolderSensitive(folder, sensitive)
+    return { success: true as const }
+  })
+
+  ipcMain.handle('vault:setBookmarkSensitive', (_e, id: string, sensitive: boolean) =>
+    vaultStore.setBookmarkSensitive(id, sensitive)
+  )
 
   ipcMain.handle(
     'vault:updateBookmark',
@@ -385,7 +431,9 @@ export function registerVaultIpcHandlers(): void {
       const clean = entries
         .map((e) => ({ title: e.title, url: normalizeBookmarkUrl(e.url), folder: e.folder || undefined }))
         .filter((e): e is { title: string; url: string; folder: string | undefined } => !!e.url)
-      return vaultStore.addBookmarksBatch(clean)
+      const result = await vaultStore.addBookmarksBatch(clean)
+      queuePreviewFetches(result.addedItems)
+      return { added: result.added, skipped: result.skipped }
     }
   )
 

@@ -74,6 +74,16 @@ export default function App(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    // Background bookmark-preview fetches (on add, or the missing-preview backfill)
+    // finish asynchronously in the main process — re-list when they do.
+    const unsubscribe = window.vaultAPI.onBookmarksUpdated(() => {
+      void refresh()
+    })
+    return unsubscribe
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handleLock = useCallback(async (): Promise<void> => {
     await window.vaultAPI.lock()
     setUnlocked(false)

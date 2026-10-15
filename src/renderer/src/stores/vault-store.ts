@@ -23,11 +23,16 @@ interface VaultUIState {
   recoveryCodes: RecoveryCodeSummary[]
   secureNotes: SecureNoteSummary[]
   bookmarks: BookmarkSummary[]
+  /** Folder names currently marked sensitive (bookmarks in them blur by default). */
+  sensitiveFolders: string[]
+  /** Guards the once-per-unlock-session auto-backfill of missing bookmark previews. */
+  bookmarkPreviewBackfillTriggered: boolean
   setUnlocked: (v: boolean) => void
   setHasVault: (v: boolean) => void
   setSection: (s: Section) => void
   setSearch: (q: string) => void
   requestFocusSearch: () => void
+  setBookmarkPreviewBackfillTriggered: (v: boolean) => void
   refresh: () => Promise<void>
 }
 
@@ -43,20 +48,24 @@ export const useVaultStore = create<VaultUIState>((set) => ({
   recoveryCodes: [],
   secureNotes: [],
   bookmarks: [],
-  setUnlocked: (v) => set({ unlocked: v }),
+  sensitiveFolders: [],
+  bookmarkPreviewBackfillTriggered: false,
+  setUnlocked: (v) => set((s) => ({ unlocked: v, bookmarkPreviewBackfillTriggered: v ? false : s.bookmarkPreviewBackfillTriggered })),
   setHasVault: (v) => set({ hasVault: v }),
   setSection: (s) => set({ section: s, search: '' }),
   setSearch: (q) => set({ search: q }),
   requestFocusSearch: () => set((s) => ({ focusSearchToken: s.focusSearchToken + 1 })),
+  setBookmarkPreviewBackfillTriggered: (v) => set({ bookmarkPreviewBackfillTriggered: v }),
   refresh: async () => {
-    const [apiKeys, logins, labels, recoveryCodes, secureNotes, bookmarks] = await Promise.all([
+    const [apiKeys, logins, labels, recoveryCodes, secureNotes, bookmarks, sensitiveFolders] = await Promise.all([
       window.vaultAPI.listApiKeys(),
       window.vaultAPI.listLogins(),
       window.vaultAPI.listLabels(),
       window.vaultAPI.listRecoveryCodes(),
       window.vaultAPI.listSecureNotes(),
-      window.vaultAPI.listBookmarks()
+      window.vaultAPI.listBookmarks(),
+      window.vaultAPI.listSensitiveFolders()
     ])
-    set({ apiKeys, logins, labels, recoveryCodes, secureNotes, bookmarks })
+    set({ apiKeys, logins, labels, recoveryCodes, secureNotes, bookmarks, sensitiveFolders })
   }
 }))
