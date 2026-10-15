@@ -45,6 +45,7 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
   const [checkingDead, setCheckingDead] = useState(false)
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set())
   const [showDeadOnly, setShowDeadOnly] = useState(false)
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
 
   useEffect(() => {
     if (bookmarkPreviewBackfillTriggered || bookmarks.length === 0) return
@@ -59,19 +60,33 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
 
   const deadCount = useMemo(() => bookmarks.filter((b) => b.linkStatus === 'dead').length, [bookmarks])
 
+  const folders = useMemo(() => {
+    const counts = new Map<string, number>()
+    let unfiled = 0
+    for (const b of bookmarks) {
+      if (b.folder) counts.set(b.folder, (counts.get(b.folder) ?? 0) + 1)
+      else unfiled++
+    }
+    return {
+      named: [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0])),
+      unfiled
+    }
+  }, [bookmarks])
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return bookmarks
       .filter(
         (b) =>
           (!showDeadOnly || b.linkStatus === 'dead') &&
+          (selectedFolder === null || (selectedFolder === '' ? !b.folder : b.folder === selectedFolder)) &&
           (!q ||
             b.title.toLowerCase().includes(q) ||
             b.host.toLowerCase().includes(q) ||
             (b.folder ?? '').toLowerCase().includes(q))
       )
       .sort((a, b) => a.title.localeCompare(b.title))
-  }, [bookmarks, search, showDeadOnly])
+  }, [bookmarks, search, showDeadOnly, selectedFolder])
 
   async function handleOpen(id: string): Promise<void> {
     const ok = await window.vaultAPI.openBookmark(id)
@@ -200,6 +215,46 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
           </>
         }
       />
+
+      {folders.named.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 border-b border-vt-border px-7 py-3">
+          <button
+            onClick={() => setSelectedFolder(null)}
+            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+              selectedFolder === null
+                ? 'border-vt-teal bg-vt-teal/10 text-vt-teal'
+                : 'border-vt-border text-vt-muted hover:bg-vt-surface2'
+            }`}
+          >
+            All <span className="opacity-70">{bookmarks.length}</span>
+          </button>
+          {folders.named.map(([folder, count]) => (
+            <button
+              key={folder}
+              onClick={() => setSelectedFolder((cur) => (cur === folder ? null : folder))}
+              className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                selectedFolder === folder
+                  ? 'border-vt-teal bg-vt-teal/10 text-vt-teal'
+                  : 'border-vt-border text-vt-muted hover:bg-vt-surface2'
+              }`}
+            >
+              {folder} <span className="opacity-70">{count}</span>
+            </button>
+          ))}
+          {folders.unfiled > 0 && (
+            <button
+              onClick={() => setSelectedFolder((cur) => (cur === '' ? null : ''))}
+              className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                selectedFolder === ''
+                  ? 'border-vt-teal bg-vt-teal/10 text-vt-teal'
+                  : 'border-vt-border text-vt-muted hover:bg-vt-surface2'
+              }`}
+            >
+              No folder <span className="opacity-70">{folders.unfiled}</span>
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-7 py-6">
         {bookmarks.length === 0 ? (
