@@ -41,6 +41,7 @@ const vaultAPI: VaultAPI = {
   setFolderSensitive: (folder, sensitive) => ipcRenderer.invoke('vault:setFolderSensitive', folder, sensitive),
   setBookmarkSensitive: (id, sensitive) => ipcRenderer.invoke('vault:setBookmarkSensitive', id, sensitive),
   setBookmarkFolder: (id, folder) => ipcRenderer.invoke('vault:setBookmarkFolder', id, folder),
+  captureBookmarkPreviewInteractive: (id) => ipcRenderer.invoke('vault:captureBookmarkPreviewInteractive', id),
   renameBookmarkFolder: (oldName, newName) => ipcRenderer.invoke('vault:renameBookmarkFolder', oldName, newName),
   updateBookmark: (id, patch) => ipcRenderer.invoke('vault:updateBookmark', id, patch),
   scanBrowserBookmarks: () => ipcRenderer.invoke('vault:scanBrowserBookmarks'),

@@ -202,6 +202,15 @@ export interface VaultAPI {
   setBookmarkSensitive: (id: string, sensitive: boolean) => Promise<BookmarkSummary | null>
   /** Moves a single bookmark into a folder (or removes it from one) without touching title/url. */
   setBookmarkFolder: (id: string, folder: string | undefined) => Promise<BookmarkSummary | null>
+  /**
+   * Opens a visible browser window on the bookmark's link so the user can solve a
+   * CAPTCHA by hand, then captures the resulting page's preview using that session.
+   * Returns null if Touch ID failed/was cancelled, `{ cancelled: true }` if the user
+   * closed the window without capturing, otherwise the updated bookmark.
+   */
+  captureBookmarkPreviewInteractive: (
+    id: string
+  ) => Promise<{ cancelled: true } | { cancelled: false; bookmark: BookmarkSummary | null } | null>
   /** Renames a folder for every bookmark in it at once. */
   renameBookmarkFolder: (
     oldName: string,

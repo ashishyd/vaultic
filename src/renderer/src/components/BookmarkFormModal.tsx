@@ -29,6 +29,7 @@ export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.
   const [loading, setLoading] = useState(!!id)
   const [unavailable, setUnavailable] = useState(false)
   const [fetchingPreview, setFetchingPreview] = useState(false)
+  const [capturingPreview, setCapturingPreview] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   const [revealPreviewImage, setRevealPreviewImage] = useState(false)
 
@@ -106,6 +107,29 @@ export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.
       }
     } finally {
       setFetchingPreview(false)
+    }
+  }
+
+  async function handleCaptureInteractive(): Promise<void> {
+    if (!id) return
+    setCapturingPreview(true)
+    try {
+      const result = await window.vaultAPI.captureBookmarkPreviewInteractive(id)
+      if (!result) {
+        push('Touch ID failed or was cancelled', 'error')
+      } else if (result.cancelled) {
+        push('Capture cancelled', 'info')
+      } else {
+        await refresh()
+        push(
+          result.bookmark?.previewTitle || result.bookmark?.previewDescription || result.bookmark?.previewImage
+            ? 'Preview captured'
+            : 'No preview info found on the page',
+          'success'
+        )
+      }
+    } finally {
+      setCapturingPreview(false)
     }
   }
 
@@ -240,18 +264,29 @@ export function BookmarkFormModal({ id, onClose }: BookmarkFormModalProps): JSX.
               <div className="border-t border-vt-border pt-3">
                 <div className="mb-1.5 flex items-center justify-between">
                   <label className="text-xs font-medium text-vt-muted">Page preview</label>
-                  <button
-                    type="button"
-                    onClick={() => void handleFetchPreview()}
-                    disabled={fetchingPreview}
-                    className="text-xs text-vt-teal hover:underline disabled:opacity-50"
-                  >
-                    {fetchingPreview
-                      ? 'Fetching…'
-                      : existing?.previewFetchedAt
-                        ? 'Refresh preview'
-                        : 'Fetch preview'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleFetchPreview()}
+                      disabled={fetchingPreview || capturingPreview}
+                      className="text-xs text-vt-teal hover:underline disabled:opacity-50"
+                    >
+                      {fetchingPreview
+                        ? 'Fetching…'
+                        : existing?.previewFetchedAt
+                          ? 'Refresh preview'
+                          : 'Fetch preview'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCaptureInteractive()}
+                      disabled={fetchingPreview || capturingPreview}
+                      title="Opens a real browser window so you can solve a CAPTCHA by hand, then captures the preview"
+                      className="text-xs text-vt-muted hover:text-vt-teal hover:underline disabled:opacity-50"
+                    >
+                      {capturingPreview ? 'Opening…' : 'Blocked? Open browser'}
+                    </button>
+                  </div>
                 </div>
                 {existing?.previewTitle || existing?.previewDescription || existing?.previewImage ? (
                   <div className="flex gap-2 rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2 text-xs">

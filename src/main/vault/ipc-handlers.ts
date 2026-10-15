@@ -13,6 +13,7 @@ import { readSettings, writeSettings, type AppSettings } from './settings'
 import { getFrontmostChromeTabUrl, getFrontmostBrowserTabUrl } from './chrome'
 import { scanBrowserBookmarks } from './chrome-bookmarks'
 import { fetchLinkPreview } from './link-preview'
+import { captureInteractivePreview } from './interactive-preview'
 import { openUrlIncognito } from './incognito'
 import { queuePreviewFetch, queuePreviewFetches } from './preview-queue'
 import { getCloudSyncStatus, pushVaultToCloud, pullVaultFromCloud } from './cloud-sync'
@@ -361,6 +362,16 @@ export function registerVaultIpcHandlers(): void {
     // Record the attempt either way so a page with no metadata isn't silently
     // re-tried forever; the renderer tells "nothing found" apart from "fetched".
     return vaultStore.saveBookmarkPreview(id, preview ?? {}, status)
+  })
+
+  ipcMain.handle('vault:captureBookmarkPreviewInteractive', async (_e, id: string) => {
+    const ok = await requireAuth('capture a preview of this link')
+    if (!ok) return null
+    const b = vaultStore.getBookmark(id)
+    if (!b) return null
+    const preview = await captureInteractivePreview(b.url)
+    if (!preview) return { cancelled: true as const }
+    return { cancelled: false as const, bookmark: await vaultStore.saveBookmarkPreview(id, preview, 'ok') }
   })
 
   ipcMain.handle('vault:fetchMissingBookmarkPreviews', async () => {
