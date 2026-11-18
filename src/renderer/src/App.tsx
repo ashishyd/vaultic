@@ -13,6 +13,7 @@ import { BookmarkFormModal } from './components/BookmarkFormModal'
 import { ImportBookmarksModal } from './components/ImportBookmarksModal'
 import { AddEntryModal } from './components/AddEntryModal'
 import { ScanImportModal } from './components/ScanImportModal'
+import { LeakScanModal } from './components/LeakScanModal'
 import { ScanRecoveryCodesModal } from './components/ScanRecoveryCodesModal'
 import { RecoveryCodesFormModal } from './components/RecoveryCodesFormModal'
 import { SecureNoteFormModal } from './components/SecureNoteFormModal'
@@ -43,6 +44,7 @@ export default function App(): JSX.Element {
   const push = useToastStore((s) => s.push)
   const [showAdd, setShowAdd] = useState(false)
   const [showScan, setShowScan] = useState(false)
+  const [showLeakScan, setShowLeakScan] = useState(false)
   const [showImportLogins, setShowImportLogins] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
@@ -137,6 +139,7 @@ export default function App(): JSX.Element {
                 onEdit={(id) => setEditTarget({ kind: 'key', id })}
                 onAdd={() => setShowAdd(true)}
                 onScan={() => setShowScan(true)}
+                onLeakScan={() => setShowLeakScan(true)}
               />
             )}
             {section === 'logins' && (
@@ -170,6 +173,7 @@ export default function App(): JSX.Element {
 
           {showAdd && <AddEntryModal section={section} onClose={() => setShowAdd(false)} />}
           {showScan && <ScanImportModal onClose={() => setShowScan(false)} />}
+          {showLeakScan && <LeakScanModal onClose={() => setShowLeakScan(false)} />}
           {showImportLogins && <ImportLoginsModal onClose={() => setShowImportLogins(false)} />}
           {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
           {editTarget && (

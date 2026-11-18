@@ -80,6 +80,7 @@ const vaultAPI: VaultAPI = {
 
   pickFolder: () => ipcRenderer.invoke('vault:pickFolder'),
   scanFolder: (folderPath) => ipcRenderer.invoke('vault:scanFolder', folderPath),
+  scanForLeaks: (folderPath) => ipcRenderer.invoke('vault:scanForLeaks', folderPath),
   scanFolderForRecoveryCodes: (folderPath) =>
     ipcRenderer.invoke('vault:scanFolderForRecoveryCodes', folderPath),
 

@@ -11,6 +11,7 @@ interface ApiKeyListProps {
   onEdit: (id: string) => void
   onAdd: () => void
   onScan: () => void
+  onLeakScan: () => void
 }
 
 const GROUP_PAGE_SIZE = 25
@@ -24,7 +25,22 @@ function envFileLabel(envFile: string | undefined): string {
   return envFile
 }
 
-export function ApiKeyList({ onEdit, onAdd, onScan }: ApiKeyListProps): JSX.Element {
+const DAY_MS = 86_400_000
+const STALE_DAYS = 90
+const EXPIRY_WARN_DAYS = 14
+
+/** Why a key needs attention, or null. Expiry beats staleness. */
+function attentionOf(k: ApiKeySummary): string | null {
+  const now = Date.now()
+  if (k.expiresAt !== undefined) {
+    if (k.expiresAt < now) return 'Expired'
+    if (k.expiresAt - now < EXPIRY_WARN_DAYS * DAY_MS) return 'Expires soon'
+  }
+  const lastTouched = k.lastUsedAt ?? k.createdAt
+  return now - lastTouched > STALE_DAYS * DAY_MS ? 'Unused 90d+' : null
+}
+
+export function ApiKeyList({ onEdit, onAdd, onScan, onLeakScan }: ApiKeyListProps): JSX.Element {
   const { apiKeys, search, refresh } = useVaultStore()
   const push = useToastStore((s) => s.push)
   const [revealed, setRevealed] = useState<Map<string, string>>(new Map())
@@ -34,11 +50,14 @@ export function ApiKeyList({ onEdit, onAdd, onScan }: ApiKeyListProps): JSX.Elem
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [collapsedSubgroups, setCollapsedSubgroups] = useState<Set<string>>(new Set())
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [attentionOnly, setAttentionOnly] = useState(false)
 
   const grouped = useMemo(() => {
     const q = search.trim().toLowerCase()
     const filtered = apiKeys.filter(
-      (k) => !q || k.project.toLowerCase().includes(q) || k.name.toLowerCase().includes(q)
+      (k) =>
+        (!q || k.project.toLowerCase().includes(q) || k.name.toLowerCase().includes(q)) &&
+        (!attentionOnly || attentionOf(k) !== null)
     )
     const groups = new Map<string, typeof filtered>()
     for (const key of filtered) {
@@ -47,7 +66,7 @@ export function ApiKeyList({ onEdit, onAdd, onScan }: ApiKeyListProps): JSX.Elem
       groups.set(key.project, list)
     }
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [apiKeys, search])
+  }, [apiKeys, search, attentionOnly])
 
   // Falls back to the first key so the detail pane is never empty while the list has items.
   const flat = useMemo(() => grouped.flatMap(([, keys]) => keys), [grouped])
@@ -166,6 +185,9 @@ export function ApiKeyList({ onEdit, onAdd, onScan }: ApiKeyListProps): JSX.Elem
               }`}
             >
               <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{key.name}</span>
+              {attentionOf(key) && (
+                <span className="rounded-md border border-vt-danger px-1.5 text-[10px] text-vt-danger">{attentionOf(key)}</span>
+              )}
               <span className="font-mono text-xs text-vt-muted">••••••</span>
             </button>
           )
@@ -189,6 +211,21 @@ export function ApiKeyList({ onEdit, onAdd, onScan }: ApiKeyListProps): JSX.Elem
         searchPlaceholder="Search keys…"
         actions={
           <>
+            <button
+              onClick={() => setAttentionOnly((v) => !v)}
+              aria-pressed={attentionOnly}
+              className={`rounded-lg border px-3.5 py-2 text-sm hover:bg-vt-surface2 ${
+                attentionOnly ? 'border-vt-teal text-vt-teal' : 'border-vt-border text-vt-text'
+              }`}
+            >
+              Needs attention
+            </button>
+            <button
+              onClick={onLeakScan}
+              className="rounded-lg border border-vt-border bg-transparent px-3.5 py-2 text-sm text-vt-text hover:bg-vt-surface2"
+            >
+              Check for leaks…
+            </button>
             <button
               onClick={onScan}
               className="rounded-lg border border-vt-border bg-transparent px-3.5 py-2 text-sm text-vt-text hover:bg-vt-surface2"
@@ -317,6 +354,15 @@ export function ApiKeyList({ onEdit, onAdd, onScan }: ApiKeyListProps): JSX.Elem
                   <IconButton onClick={() => handleCopy(sel.id)} title="Copy" tone="teal">
                     <CopyIcon size={14} />
                   </IconButton>
+                </div>
+                <div className="flex flex-col gap-1 border-b border-vt-border px-4 py-3">
+                  <span className="text-xs text-vt-muted">Last used</span>
+                  <span className="text-xs">{sel.lastUsedAt ? new Date(sel.lastUsedAt).toLocaleDateString() : 'Never'}</span>
+                  {sel.expiresAt !== undefined && (
+                    <span className={`text-xs ${attentionOf(sel) === 'Expired' ? 'text-vt-danger' : ''}`}>
+                      Expires {new Date(sel.expiresAt).toLocaleDateString()}
+                    </span>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1 px-4 py-3">
                   <span className="text-xs text-vt-muted">Imported from</span>

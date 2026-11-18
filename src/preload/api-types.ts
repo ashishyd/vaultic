@@ -6,6 +6,8 @@ export interface ApiKeySummary {
   envFile?: string
   createdAt: number
   updatedAt: number
+  lastUsedAt?: number
+  expiresAt?: number
 }
 
 export interface LoginSummary {
@@ -121,6 +123,19 @@ export interface BrowserBookmarkScanResult {
   bookmarks: BrowserBookmark[]
   /** True when macOS blocked reading a browser profile (Vaultic needs Full Disk Access). */
   permissionDenied: boolean
+}
+
+export interface LeakHit {
+  filePath: string
+  line: number
+  name: string
+  project: string
+}
+
+export interface LeakScanResult {
+  hits: LeakHit[]
+  envFileCount: number
+  filesScanned: number
 }
 
 export interface ScannedFile {
@@ -292,6 +307,8 @@ export interface VaultAPI {
 
   pickFolder: () => Promise<string | null>
   scanFolder: (folderPath: string) => Promise<ScannedFile[]>
+  // Biometric-gated (matches against secret values; returns locations only).
+  scanForLeaks: (folderPath: string) => Promise<LeakScanResult | null>
   scanFolderForRecoveryCodes: (folderPath: string) => Promise<ScannedRecoveryCodes[]>
 
   pickRecoveryCodesFile: () => Promise<string | null>
@@ -313,7 +330,7 @@ export interface VaultAPI {
   updateLoginPassword: (id: string, newPassword: string) => Promise<boolean>
   updateApiKey: (
     id: string,
-    patch: { project: string; name: string; value: string; notes?: string }
+    patch: { project: string; name: string; value: string; notes?: string; expiresAt?: number }
   ) => Promise<ApiKeySummary | null>
   updateLogin: (
     id: string,

@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from 'fs/promises'
 import { join, basename, extname } from 'path'
+import { homedir } from 'os'
 import pdfParse from 'pdf-parse'
 
 const EXCLUDED_DIRS = new Set([
@@ -226,4 +227,79 @@ export async function parseRecoveryCodesFile(filePath: string): Promise<ParsedRe
   const content = await readRecoveryFileText(filePath)
   const codes = parseRecoveryCodesContent(content)
   return { service: guessServiceName(basename(filePath)), codes }
+}
+
+export interface LeakHit {
+  filePath: string
+  line: number
+  name: string
+  project: string
+}
+
+export interface LeakScanResult {
+  hits: LeakHit[]
+  /** Files inside .env* that hold a vault secret: expected, so counted instead of listed. */
+  envFileCount: number
+  filesScanned: number
+}
+
+const MAX_LEAK_HITS = 500
+const MIN_SECRET_LENGTH = 8 // shorter values match too much noise to be a useful signal
+
+/**
+ * Looks for exact copies of vault API-key values in plaintext files under rootDir plus shell history.
+ * Read-only; returns locations only, never values. Caller must have passed the auth gate.
+ */
+export async function findLeaks(
+  rootDir: string,
+  secrets: Array<{ name: string; project: string; value: string }>
+): Promise<LeakScanResult> {
+  const needles = secrets.filter((s) => s.value.length >= MIN_SECRET_LENGTH)
+  const result: LeakScanResult = { hits: [], envFileCount: 0, filesScanned: 0 }
+
+  async function checkFile(filePath: string, isEnv: boolean): Promise<void> {
+    try {
+      if ((await stat(filePath)).size > 1_000_000) return
+      const content = await readFile(filePath, 'utf8')
+      if (content.slice(0, 8192).includes('\0')) return // binary
+      result.filesScanned++
+      const found = needles.filter((n) => content.includes(n.value))
+      if (found.length === 0) return
+      if (isEnv) {
+        result.envFileCount++
+        return
+      }
+      const lines = content.split('\n')
+      for (const n of found) {
+        const idx = lines.findIndex((l) => l.includes(n.value))
+        if (result.hits.length < MAX_LEAK_HITS) {
+          result.hits.push({ filePath, line: idx + 1, name: n.name, project: n.project })
+        }
+      }
+    } catch {
+      // unreadable file, skip
+    }
+  }
+
+  async function walk(dir: string, depth: number): Promise<void> {
+    if (depth > MAX_DEPTH + 2) return
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (!EXCLUDED_DIRS.has(entry.name) && !entry.name.startsWith('.git')) await walk(join(dir, entry.name), depth + 1)
+      } else if (entry.isFile()) {
+        await checkFile(join(dir, entry.name), isEnvFile(entry.name))
+      }
+    }
+  }
+
+  if (needles.length === 0) return result
+  await walk(rootDir, 0)
+  for (const h of ['.zsh_history', '.bash_history']) await checkFile(join(homedir(), h), false)
+  return result
 }

@@ -4,7 +4,7 @@ import { resolve as resolvePath, join } from 'path'
 import { randomUUID } from 'crypto'
 import { vaultStore, type TrashKind } from './vault-store'
 import { cacheKey, readCachedKey, clearCachedKey, hasCachedKey } from './keychain'
-import { scanForEnvFiles, scanForRecoveryCodes, parseRecoveryCodesFile } from './scanner'
+import { scanForEnvFiles, scanForRecoveryCodes, parseRecoveryCodesFile, findLeaks } from './scanner'
 import { isBiometricsAvailable, promptBiometrics, biometricGate } from './biometric'
 import { parseLoginsCsvFile, loginsToCsv } from './csv'
 import { analyzeLogins, generateStrongPassword } from './password-strength'
@@ -236,6 +236,7 @@ export function registerVaultIpcHandlers(): void {
   ipcMain.handle('vault:revealApiKeyValue', async (_e, id: string) => {
     const ok = await requireAuth('view this API key value')
     if (!ok) return null
+    await vaultStore.markApiKeysUsed([id])
     return vaultStore.getApiKeyValue(id)
   })
 
@@ -250,6 +251,7 @@ export function registerVaultIpcHandlers(): void {
     if (!ok) return false
     const value = vaultStore.getApiKeyValue(id)
     if (!value) return false
+    await vaultStore.markApiKeysUsed([id])
     copyWithAutoClear(value)
     return true
   })
@@ -478,6 +480,11 @@ export function registerVaultIpcHandlers(): void {
   })
 
   ipcMain.handle('vault:scanFolder', async (_e, folderPath: string) => scanForEnvFiles(folderPath))
+  ipcMain.handle('vault:scanForLeaks', async (_e, folderPath: string) => {
+    const ok = await requireAuth('scan for leaked secrets')
+    if (!ok) return null
+    return findLeaks(folderPath, vaultStore.getApiKeySecrets())
+  })
   ipcMain.handle('vault:scanFolderForRecoveryCodes', async (_e, folderPath: string) =>
     scanForRecoveryCodes(folderPath)
   )
@@ -611,7 +618,11 @@ export function registerVaultIpcHandlers(): void {
 
   ipcMain.handle(
     'vault:updateApiKey',
-    async (_e, id: string, patch: { project: string; name: string; value: string; notes?: string }) => {
+    async (
+      _e,
+      id: string,
+      patch: { project: string; name: string; value: string; notes?: string; expiresAt?: number }
+    ) => {
       const ok = await requireAuth('edit this API key')
       if (!ok) return null
       return vaultStore.updateApiKey(id, patch)

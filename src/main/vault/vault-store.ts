@@ -29,6 +29,10 @@ interface ApiKeyRecord {
   createdAt: number
   updatedAt: number
   deletedAt?: number
+  /** Set whenever the value is revealed, copied or injected by `vaultic run`. Old vaults lack it. */
+  lastUsedAt?: number
+  /** User-set expiry (ms epoch). */
+  expiresAt?: number
 }
 
 interface LoginRecord {
@@ -125,6 +129,8 @@ export interface ApiKeySummary {
   envFile?: string
   createdAt: number
   updatedAt: number
+  lastUsedAt?: number
+  expiresAt?: number
 }
 
 export interface LoginSummary {
@@ -242,7 +248,9 @@ function toApiKeySummary(r: ApiKeyRecord): ApiKeySummary {
     notes: r.notes,
     envFile: r.envFile,
     createdAt: r.createdAt,
-    updatedAt: r.updatedAt ?? r.createdAt
+    updatedAt: r.updatedAt ?? r.createdAt,
+    lastUsedAt: r.lastUsedAt,
+    expiresAt: r.expiresAt
   }
 }
 
@@ -611,6 +619,21 @@ class VaultStore {
     return count
   }
 
+  /** Biometric-gated in ipc-handlers before this is called. Feeds the leak scan, which returns locations only. */
+  getApiKeySecrets(): Array<{ name: string; project: string; value: string }> {
+    return this.ensureUnlocked()
+      .apiKeys.filter((k) => !k.deletedAt)
+      .map((k) => ({ name: k.name, project: k.project, value: k.value }))
+  }
+
+  /** Call after a gated reveal/copy/injection so the lifecycle view can show staleness. */
+  async markApiKeysUsed(ids: string[]): Promise<void> {
+    const data = this.ensureUnlocked()
+    const now = Date.now()
+    for (const k of data.apiKeys) if (ids.includes(k.id)) k.lastUsedAt = now
+    await this.persist()
+  }
+
   /** Biometric-gated in ipc-handlers before this is called. */
   getApiKeyValue(id: string): string | null {
     const data = this.ensureUnlocked()
@@ -935,7 +958,7 @@ class VaultStore {
   /** Biometric-gated in ipc-handlers before this is called (edit flow needs the current value prefilled). */
   async updateApiKey(
     id: string,
-    patch: { project: string; name: string; value: string; notes?: string }
+    patch: { project: string; name: string; value: string; notes?: string; expiresAt?: number }
   ): Promise<ApiKeySummary> {
     const data = this.ensureUnlocked()
     const key = data.apiKeys.find((k) => k.id === id)
@@ -944,6 +967,7 @@ class VaultStore {
     key.name = patch.name
     key.value = patch.value
     key.notes = patch.notes
+    key.expiresAt = patch.expiresAt
     key.updatedAt = Date.now()
     await this.persist()
     return toApiKeySummary(key)

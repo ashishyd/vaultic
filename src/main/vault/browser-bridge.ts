@@ -217,6 +217,52 @@ async function handleRequest(
     return
   }
 
+  // Names only (no values, no prompt): lets an agent discover what it may ask for.
+  if (url.pathname === '/v1/env/names' && req.method === 'GET') {
+    sendJson(res, 200, { keys: vaultStore.listApiKeys().map((k) => ({ project: k.project, name: k.name })) })
+    return
+  }
+
+  // `vaultic run`: API-key values for one project, as env vars. Touch ID on every call, never cached.
+  if (url.pathname === '/v1/env' && req.method === 'POST') {
+    let body: { project?: string; names?: string[]; reason?: string }
+    try {
+      body = JSON.parse(await readBody(req))
+    } catch {
+      sendJson(res, 400, { error: 'invalid_json' })
+      return
+    }
+    const project = (body.project || '').trim().toLowerCase()
+    if (!project) {
+      sendJson(res, 400, { error: 'project_required' })
+      return
+    }
+    // Summaries carry no secrets, so a missing project is reported before any prompt.
+    const keys = vaultStore
+      .listApiKeys()
+      .filter((k) => k.project.toLowerCase() === project && /^[A-Za-z_][A-Za-z0-9_]*$/.test(k.name))
+      .filter((k) => !Array.isArray(body.names) || body.names.includes(k.name))
+    if (keys.length === 0) {
+      sendJson(res, 404, { error: 'not_found' })
+      return
+    }
+    // The caller's description is shown in the Touch ID prompt, so strip control chars and cap its length.
+    const what = String(body.reason ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 120).trim()
+    const ok = await requireBridgeAuth(`inject ${keys.length} API keys ${what ? `to ${what}` : 'into a command'}`)
+    if (!ok) {
+      sendJson(res, 403, { error: 'auth_declined' })
+      return
+    }
+    await vaultStore.markApiKeysUsed(keys.map((k) => k.id))
+    const vars: Record<string, string> = {}
+    for (const k of keys) {
+      const value = vaultStore.getApiKeyValue(k.id)
+      if (value !== null) vars[k.name] = value
+    }
+    sendJson(res, 200, { vars })
+    return
+  }
+
   if (url.pathname === '/v1/bookmarks' && req.method === 'POST') {
     const ok = await requireBridgeAuth('save bookmark from Chrome')
     if (!ok) {

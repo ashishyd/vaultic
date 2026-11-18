@@ -29,6 +29,7 @@ export function EditEntryModal({ kind, id, onClose }: EditEntryModalProps): JSX.
   const [password, setPassword] = useState('')
   const [url, setUrl] = useState('')
   const [notes, setNotes] = useState('')
+  const [expires, setExpires] = useState('')
   const [totpSecret, setTotpSecret] = useState('')
   const [clearTotp, setClearTotp] = useState(false)
 
@@ -42,6 +43,7 @@ export function EditEntryModal({ kind, id, onClose }: EditEntryModalProps): JSX.
           setProject(key.project)
           setName(key.name)
           setNotes(key.notes ?? '')
+          setExpires(key.expiresAt ? new Date(key.expiresAt).toISOString().slice(0, 10) : '')
         }
         const revealed = await window.vaultAPI.revealApiKeyValue(id)
         if (cancelled) return
@@ -109,7 +111,8 @@ export function EditEntryModal({ kind, id, onClose }: EditEntryModalProps): JSX.
           project: project.trim(),
           name: name.trim(),
           value: value.trim(),
-          notes: notes.trim() || undefined
+          notes: notes.trim() || undefined,
+          expiresAt: expires ? new Date(expires).getTime() : undefined
         })
         if (!result) {
           setError('Could not save — authentication was declined.')
@@ -178,6 +181,7 @@ export function EditEntryModal({ kind, id, onClose }: EditEntryModalProps): JSX.
                   generating={generating}
                 />
                 <Field label="Notes (optional)" value={notes} onChange={setNotes} />
+                <Field label="Expires (optional)" value={expires} onChange={setExpires} type="date" />
               </>
             ) : (
               <>
@@ -261,7 +265,8 @@ function Field({
   placeholder,
   mono,
   onGenerate,
-  generating
+  generating,
+  type = 'text'
 }: {
   label: string
   value: string
@@ -270,6 +275,7 @@ function Field({
   mono?: boolean
   onGenerate?: () => void
   generating?: boolean
+  type?: string
 }): JSX.Element {
   return (
     <div>
@@ -287,7 +293,7 @@ function Field({
         )}
       </div>
       <input
-        type="text"
+        type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
