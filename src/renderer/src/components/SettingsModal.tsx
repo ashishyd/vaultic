@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useToastStore } from '../stores/toast-store'
 import { RecoveryModal } from './RecoveryModal'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -24,6 +24,37 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
+function SettingGroup({ title, children }: { title: string; children: ReactNode }): JSX.Element {
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-vt-muted">{title}</h3>
+      <div className="flex flex-col rounded-xl border border-vt-border">{children}</div>
+    </section>
+  )
+}
+
+function SettingRow({
+  title,
+  description,
+  mono,
+  children
+}: {
+  title: string
+  description: string
+  mono?: boolean
+  children: ReactNode
+}): JSX.Element {
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-b border-vt-border px-4 py-3 last:border-b-0">
+      <div className="min-w-[200px] flex-1">
+        <p className="text-sm font-medium">{title}</p>
+        <p className={`break-all text-xs text-vt-muted ${mono ? 'font-mono text-vt-teal' : ''}`}>{description}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">{children}</div>
+    </div>
+  )
+}
+
 export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
   const push = useToastStore((s) => s.push)
   const [autoLockMinutes, setAutoLockMinutes] = useState(5)
@@ -38,6 +69,7 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [bridgeToken, setBridgeToken] = useState('')
   const [extensionId, setExtensionId] = useState('')
+  const [launchAtLogin, setLaunchAtLogin] = useState(false)
 
   const [showChangePassword, setShowChangePassword] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
@@ -71,8 +103,9 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
       window.vaultAPI.getStorageInfo(),
       window.vaultAPI.getAppInfo(),
       window.vaultAPI.getBridgeInfo(),
-      window.vaultAPI.cloudSyncStatus()
-    ]).then(([settings, cached, info, appInfo, bridge, cloud]) => {
+      window.vaultAPI.cloudSyncStatus(),
+      window.vaultAPI.getLaunchAtLogin()
+    ]).then(([settings, cached, info, appInfo, bridge, cloud, launch]) => {
       if (!cancelled) {
         setAutoLockMinutes(settings.autoLockMinutes)
         setHasCachedKey(cached)
@@ -82,6 +115,7 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
         setExtensionId(bridge.extensionId)
         setCloudConfigured(cloud.configured)
         setCloudUpdatedAt(cloud.updatedAt)
+        setLaunchAtLogin(launch)
         setLoading(false)
       }
     })
@@ -269,180 +303,178 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
   return (
     <ModalBackdrop onClose={onClose}>
       <div
-        className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
+        className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-sm font-semibold">Settings</h2>
+        <h2 className="mb-5 text-sm font-semibold">Settings</h2>
 
         {loading ? (
           <p className="text-xs text-vt-muted">Loading…</p>
         ) : (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-medium text-vt-muted">Auto-lock after inactivity</label>
-              <select
-                value={autoLockMinutes}
-                disabled={saving}
-                onChange={(e) => void handleChange(Number(e.target.value))}
-                className="w-full rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2 text-sm outline-none focus:border-vt-teal disabled:opacity-50"
+          <div className="flex flex-col gap-6">
+            <SettingGroup title="Security">
+              <SettingRow title="Auto-lock after inactivity" description="Clears the key from memory. Touch ID still works after.">
+                <select
+                  value={autoLockMinutes}
+                  disabled={saving}
+                  onChange={(e) => void handleChange(Number(e.target.value))}
+                  className="rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2 text-sm outline-none focus:border-vt-teal disabled:opacity-50"
+                >
+                  {AUTO_LOCK_OPTIONS.map((opt) => (
+                    <option key={opt.minutes} value={opt.minutes}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </SettingRow>
+              <SettingRow
+                title="Touch ID unlock"
+                description={
+                  hasCachedKey ? 'On. The vault key is cached in your macOS Keychain.' : 'Off. The next unlock needs your master password.'
+                }
               >
-                {AUTO_LOCK_OPTIONS.map((opt) => (
-                  <option key={opt.minutes} value={opt.minutes}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="border-t border-vt-border pt-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-vt-muted">Storage</h3>
-              {storage && (
-                <div className="mb-3 space-y-1 text-xs text-vt-muted">
-                  <p>
-                    Vault size: <span className="text-vt-text">{formatBytes(storage.vaultBytes)}</span>
-                  </p>
-                  <p className="truncate" title={storage.vaultPath}>
-                    Path: <span className="text-vt-text">{storage.vaultPath}</span>
-                  </p>
-                  <p>
-                    Items: {storage.counts.apiKeys} keys · {storage.counts.logins} logins ·{' '}
-                    {storage.counts.recoveryCodes} recovery · {storage.counts.secureNotes} notes · {storage.counts.bookmarks} bookmarks
-                  </p>
-                  <p>
-                    Trash: {storage.trashCount} item{storage.trashCount === 1 ? '' : 's'} (kept{' '}
-                    {storage.retentionDays} days)
-                  </p>
-                </div>
-              )}
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => void handleBackup()}
-                  disabled={busy}
-                  className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2 disabled:opacity-50"
-                >
-                  Back up vault…
-                </button>
-                <button
-                  onClick={() => void handlePickRestore()}
-                  disabled={busy}
-                  className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2 disabled:opacity-50"
-                >
-                  Restore from backup…
-                </button>
+                {hasCachedKey && (
+                  <button
+                    onClick={() => setConfirmForgetTouchId(true)}
+                    disabled={forgetting}
+                    className="rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-danger hover:bg-vt-surface2 disabled:opacity-50"
+                  >
+                    Forget Touch ID…
+                  </button>
+                )}
+              </SettingRow>
+              <SettingRow title="Master password" description="Re-encrypts the vault with a new password.">
                 <button
                   onClick={() => {
                     setPasswordError(null)
                     setShowChangePassword(true)
                   }}
-                  className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2"
+                  className="rounded-lg border border-vt-border px-3 py-1.5 text-sm hover:bg-vt-surface2"
                 >
-                  Change master password…
+                  Change…
                 </button>
-              </div>
-            </div>
-
-            <div className="border-t border-vt-border pt-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-vt-muted">Cloud sync</h3>
-              {cloudConfigured ? (
-                <>
-                  <p className="mb-3 text-xs text-vt-muted">
-                    {cloudUpdatedAt
-                      ? `Last synced ${new Date(cloudUpdatedAt).toLocaleString()}. `
-                      : 'Not synced yet. '}
-                    Your vault stays encrypted end to end — the cloud only ever sees the same ciphertext as a local
-                    backup file.
-                  </p>
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={() => void handleCloudPush()}
-                      disabled={cloudSyncing}
-                      className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2 disabled:opacity-50"
-                    >
-                      {cloudSyncing ? 'Syncing…' : 'Sync to cloud…'}
-                    </button>
-                    <button
-                      onClick={handleOpenCloudRestore}
-                      disabled={cloudSyncing}
-                      className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2 disabled:opacity-50"
-                    >
-                      Restore from cloud…
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <p className="text-xs text-vt-muted">
-                  Cloud sync isn&apos;t configured (no DATABASE_URL). Run the Neon setup for this app to enable it.
-                </p>
-              )}
-            </div>
-
-            <div className="border-t border-vt-border pt-4">
-              <button
-                onClick={() => setShowRecovery(true)}
-                className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2"
-              >
-                Emergency Recovery Access…
-              </button>
-              {hasCachedKey && (
+              </SettingRow>
+              <SettingRow title="Emergency recovery access" description="A second way in if you forget the master password.">
                 <button
-                  onClick={() => setConfirmForgetTouchId(true)}
-                  disabled={forgetting}
-                  className="mt-2 w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2 disabled:opacity-50"
+                  onClick={() => setShowRecovery(true)}
+                  className="rounded-lg border border-vt-border px-3 py-1.5 text-sm hover:bg-vt-surface2"
                 >
-                  Forget Touch ID unlock…
+                  Manage…
                 </button>
-              )}
-            </div>
+              </SettingRow>
+            </SettingGroup>
 
-            <div className="border-t border-vt-border pt-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-vt-muted">Browser extension</h3>
-              <p className="mb-2 text-[11px] text-vt-muted">
-                Fill and save Chrome logins via the Vaultic extension. Keep Vaultic running (unlocked) while you
-                browse.
-              </p>
-              <div className="mb-2 rounded-lg border border-vt-border bg-vt-surface2 px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wide text-vt-muted">Bridge token</p>
-                <p className="mt-1 break-all font-mono text-[11px] text-vt-teal">{bridgeToken || '…'}</p>
-              </div>
-              <div className="flex flex-col gap-2">
+            <SettingGroup title="Browser extension">
+              <SettingRow
+                title="Launch Vaultic at login"
+                description="So the extension always works, with no need to open the app."
+              >
+                <input
+                  type="checkbox"
+                  aria-label="Launch Vaultic at login"
+                  checked={launchAtLogin}
+                  onChange={async (e) => {
+                    const next = e.target.checked
+                    setLaunchAtLogin(next)
+                    setLaunchAtLogin(await window.vaultAPI.setLaunchAtLogin(next))
+                  }}
+                />
+              </SettingRow>
+              <SettingRow title="Bridge token" description={bridgeToken || '…'} mono>
                 <button
                   onClick={() => void handleCopyToken()}
-                  className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2"
+                  className="rounded-lg border border-vt-border px-3 py-1.5 text-sm hover:bg-vt-surface2"
                 >
-                  Copy bridge token
+                  Copy
                 </button>
+              </SettingRow>
+              <SettingRow title="Browser bridge" description="Native Messaging host for Chrome.">
                 <button
                   onClick={() => void handleInstallNativeHost()}
                   disabled={busy}
-                  className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2 disabled:opacity-50"
+                  className="rounded-lg border border-vt-border px-3 py-1.5 text-sm hover:bg-vt-surface2 disabled:opacity-50"
                 >
-                  Install browser bridge (Native Messaging)
+                  Install
                 </button>
+              </SettingRow>
+              <SettingRow
+                title="Extension folder"
+                description={`Chrome → Extensions → Load unpacked. Extension ID: ${extensionId || '…'}`}
+              >
                 <button
                   onClick={() => void handleOpenExtension()}
-                  className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2"
+                  className="rounded-lg border border-vt-border px-3 py-1.5 text-sm hover:bg-vt-surface2"
                 >
-                  Reveal extension folder…
+                  Reveal…
                 </button>
-              </div>
-              <p className="mt-2 text-[11px] text-vt-muted">
-                Chrome → Extensions → Load unpacked → select the <span className="font-mono">extension</span> folder.
-                Extension ID: <span className="font-mono">{extensionId || '…'}</span>
-              </p>
-            </div>
+              </SettingRow>
+            </SettingGroup>
 
-            <div className="border-t border-vt-border pt-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-vt-muted">About</h3>
-              <p className="mb-2 text-xs text-vt-muted">
-                Vaultic {appVersion} · local-first · ⌘⇧V shows window from tray
-              </p>
-              <button
-                onClick={() => void handleCheckUpdates()}
-                className="w-full rounded-lg border border-vt-border px-3 py-2 text-sm hover:bg-vt-surface2"
-              >
-                Check for updates
-              </button>
-            </div>
+            <SettingGroup title="Backup and sync">
+              {cloudConfigured ? (
+                <SettingRow
+                  title="Cloud sync"
+                  description={`${cloudUpdatedAt ? `Last synced ${new Date(cloudUpdatedAt).toLocaleString()}. ` : 'Not synced yet. '}Only the encrypted file is stored.`}
+                >
+                  <button
+                    onClick={() => void handleCloudPush()}
+                    disabled={cloudSyncing}
+                    className="rounded-lg border border-vt-border px-3 py-1.5 text-sm hover:bg-vt-surface2 disabled:opacity-50"
+                  >
+                    {cloudSyncing ? 'Syncing…' : 'Sync…'}
+                  </button>
+                  <button
+                    onClick={handleOpenCloudRestore}
+                    disabled={cloudSyncing}
+                    className="rounded-lg border border-vt-border px-3 py-1.5 text-sm hover:bg-vt-surface2 disabled:opacity-50"
+                  >
+                    Restore…
+                  </button>
+                </SettingRow>
+              ) : (
+                <SettingRow
+                  title="Cloud sync"
+                  description="Not configured (no DATABASE_URL). Run the Neon setup for this app to enable it."
+                >
+                  {null}
+                </SettingRow>
+              )}
+              <SettingRow title="Local backup file" description="Save or restore an encrypted copy of the vault.">
+                <button
+                  onClick={() => void handleBackup()}
+                  disabled={busy}
+                  className="rounded-lg border border-vt-border px-3 py-1.5 text-sm hover:bg-vt-surface2 disabled:opacity-50"
+                >
+                  Back up…
+                </button>
+                <button
+                  onClick={() => void handlePickRestore()}
+                  disabled={busy}
+                  className="rounded-lg border border-vt-border px-3 py-1.5 text-sm hover:bg-vt-surface2 disabled:opacity-50"
+                >
+                  Restore…
+                </button>
+              </SettingRow>
+            </SettingGroup>
+
+            <SettingGroup title="Storage and about">
+              {storage && (
+                <SettingRow
+                  title={`Vault size ${formatBytes(storage.vaultBytes)}`}
+                  description={`${storage.counts.apiKeys} keys · ${storage.counts.logins} logins · ${storage.counts.recoveryCodes} recovery · ${storage.counts.secureNotes} notes · ${storage.counts.bookmarks} bookmarks. Trash: ${storage.trashCount} item${storage.trashCount === 1 ? '' : 's'}, kept ${storage.retentionDays} days.`}
+                >
+                  {null}
+                </SettingRow>
+              )}
+              <SettingRow title={`Vaultic ${appVersion}`} description="Local-first · ⌘⇧V shows the window from the tray">
+                <button
+                  onClick={() => void handleCheckUpdates()}
+                  className="rounded-lg border border-vt-border px-3 py-1.5 text-sm hover:bg-vt-surface2"
+                >
+                  Check for updates
+                </button>
+              </SettingRow>
+            </SettingGroup>
           </div>
         )}
 

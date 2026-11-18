@@ -18,8 +18,8 @@ function formatAge(days: number): string {
 
 function StatCard({ label, value, danger }: { label: string; value: number; danger?: boolean }): JSX.Element {
   return (
-    <div className="rounded-[10px] border border-vt-border bg-vt-surface p-4">
-      <div className="mb-1.5 text-[11px] uppercase tracking-wide text-vt-muted">{label}</div>
+    <div className="rounded-xl border border-vt-border bg-vt-surface p-4">
+      <div className="mb-1.5 text-xs text-vt-muted">{label}</div>
       <div className={`text-[28px] font-semibold ${danger ? 'text-vt-danger' : ''}`}>{value}</div>
     </div>
   )
@@ -147,7 +147,7 @@ export function PasswordHealthView(): JSX.Element {
         {usedCli && !suggestError && <p className="mb-3 text-xs text-vt-muted">Suggested using the {usedCli} CLI.</p>}
         {suggestError && <p className="mb-3 text-xs text-vt-danger">{suggestError}</p>}
 
-        <div className="mb-6 grid grid-cols-4 gap-3">
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard label="Total logins" value={stats.total} />
           <StatCard label="Weak" value={stats.weak} danger={stats.weak > 0} />
           <StatCard label="Reused" value={stats.reused} danger={stats.reused > 0} />
@@ -159,74 +159,68 @@ export function PasswordHealthView(): JSX.Element {
         ) : issueRows.length === 0 ? (
           <p className="text-xs text-vt-muted">No issues found — nice and tidy.</p>
         ) : (
-          <table className="w-full table-fixed border-collapse">
-            <thead>
-              <tr>
-                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted">
-                  Service
-                </th>
-                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted">
-                  Username
-                </th>
-                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted">
-                  Issue
-                </th>
-                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted" style={{ width: 260 }} />
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <div className="mb-3 flex items-baseline gap-2">
+              <h2 className="text-sm font-semibold">Fix first</h2>
+              <span className="text-xs text-vt-muted">Weak, reused and stale passwords</span>
+            </div>
+            <div className="flex flex-col overflow-hidden rounded-xl border border-vt-border">
               {issueRows.map(({ login, info }) => (
-                <tr key={login.id}>
-                  <td className="border-b border-vt-border/60 px-3 py-3 font-medium">{login.service}</td>
-                  <td className="border-b border-vt-border/60 px-3 py-3 text-xs text-vt-muted">{login.username}</td>
-                  <td className="border-b border-vt-border/60 px-3 py-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      {info?.strength === 'weak' && (
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] ${STRENGTH_STYLES.weak}`}>Weak</span>
-                      )}
-                      {info?.reused && (
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] ${STRENGTH_STYLES.weak}`}>Reused</span>
-                      )}
-                      {info?.stale && (
-                        <span className="rounded-full border border-yellow-500 px-2 py-0.5 text-[11px] text-yellow-400">
-                          {formatAge(info.ageDays)} old
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="border-b border-vt-border/60 px-3 py-3 text-right">
-                    {suggestions.has(login.id) ? (
-                      <div className="flex items-center justify-end gap-2">
-                        <span className="truncate rounded bg-vt-surface2 px-2 py-1 font-mono text-xs text-vt-teal">
-                          {suggestions.get(login.id)}
-                        </span>
-                        <button
-                          onClick={() => copyWithAutoClear(suggestions.get(login.id) ?? '')}
-                          className="rounded-md px-2 py-1 text-xs text-vt-muted hover:bg-vt-surface2 hover:text-vt-text"
-                        >
-                          Copy
-                        </button>
-                        <button
-                          onClick={() => handleSaveSuggestion(login.id)}
-                          disabled={savingId === login.id}
-                          className="rounded-md bg-vt-teal px-2 py-1 text-xs font-medium text-vt-bg hover:brightness-110 disabled:opacity-50"
-                        >
-                          {savingId === login.id ? 'Saving…' : 'Save'}
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleSuggest(login.id)}
-                        className="rounded-lg border border-vt-border px-3.5 py-1.5 text-xs text-vt-text hover:bg-vt-surface2"
-                      >
-                        Generate new
-                      </button>
+                <div
+                  key={login.id}
+                  className="flex flex-wrap items-center gap-3 border-b border-vt-border bg-vt-surface px-4 py-3 last:border-b-0"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-vt-surface2 text-sm font-semibold">
+                    {login.service.charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-[160px] flex-1">
+                    <p className="truncate text-sm font-medium">{login.service}</p>
+                    <p className="truncate text-xs text-vt-muted">{login.username}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {info?.strength === 'weak' && (
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] ${STRENGTH_STYLES.weak}`}>Weak</span>
                     )}
-                  </td>
-                </tr>
+                    {info?.reused && (
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] ${STRENGTH_STYLES.weak}`}>Reused</span>
+                    )}
+                    {info?.stale && (
+                      <span className="rounded-full border border-yellow-500 px-2 py-0.5 text-[11px] text-yellow-400">
+                        {formatAge(info.ageDays)} old
+                      </span>
+                    )}
+                  </div>
+                  {suggestions.has(login.id) ? (
+                    <div className="flex items-center gap-2">
+                      <span className="max-w-[200px] truncate rounded bg-vt-surface2 px-2 py-1 font-mono text-xs text-vt-teal">
+                        {suggestions.get(login.id)}
+                      </span>
+                      <button
+                        onClick={() => copyWithAutoClear(suggestions.get(login.id) ?? '')}
+                        className="rounded-md px-2 py-1 text-xs text-vt-muted hover:bg-vt-surface2 hover:text-vt-text"
+                      >
+                        Copy
+                      </button>
+                      <button
+                        onClick={() => handleSaveSuggestion(login.id)}
+                        disabled={savingId === login.id}
+                        className="rounded-md bg-vt-teal px-2 py-1 text-xs font-medium text-vt-bg hover:brightness-110 disabled:opacity-50"
+                      >
+                        {savingId === login.id ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleSuggest(login.id)}
+                      className="rounded-lg border border-vt-border px-3 py-1.5 text-xs text-vt-text hover:bg-vt-surface2"
+                    >
+                      Generate new
+                    </button>
+                  )}
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
 

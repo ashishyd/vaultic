@@ -11,7 +11,6 @@ import {
   PencilIcon,
   TrashIcon,
   PlusIcon,
-  ExternalLinkIcon,
   GlassesIcon,
   RefreshIcon,
   EyeIcon,
@@ -348,83 +347,77 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
         ) : filtered.length === 0 ? (
           <p className="text-sm text-vt-muted">No bookmarks match your search.</p>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4">
             {filtered.map((b) => (
-              <div
+              <article
                 key={b.id}
                 draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData('text/vaultic-bookmark-id', b.id)
                   e.dataTransfer.effectAllowed = 'move'
                 }}
-                className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 ${
-                  b.linkStatus === 'dead' ? 'border-vt-danger/50 bg-vt-danger/5' : 'border-vt-border'
+                className={`flex flex-col overflow-hidden rounded-xl border bg-vt-surface ${
+                  b.linkStatus === 'dead' ? 'border-vt-danger/50' : 'border-vt-border'
                 }`}
               >
-                <div className="flex min-w-0 items-center gap-3">
-                  {b.previewImage && b.sensitive && !revealedIds.has(b.id) ? (
-                    <button
-                      type="button"
-                      onClick={() => revealThumbnail(b.id)}
-                      className="relative shrink-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-vt-teal"
-                      title="Sensitive — click to reveal"
-                    >
-                      <img
-                        src={b.previewImage}
-                        alt=""
-                        className="h-10 w-10 rounded-lg border border-vt-border object-cover blur-md"
-                      />
-                      <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/20">
-                        <EyeIcon size={14} className="text-white" />
-                      </span>
-                    </button>
-                  ) : b.previewImage ? (
-                    <button
-                      type="button"
-                      onClick={() => setLightboxImage(b.previewImage!)}
-                      className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-vt-teal"
-                      title="View full image"
-                    >
-                      <img
-                        src={b.previewImage}
-                        alt=""
-                        className="h-10 w-10 rounded-lg border border-vt-border object-cover transition hover:brightness-110"
-                      />
-                    </button>
-                  ) : (
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-vt-border bg-vt-surface2 text-xs font-medium text-vt-muted">
-                      {b.host.replace(/^www\./, '').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{b.title}</p>
-                    <p className="truncate text-xs text-vt-muted">
-                      {b.host}
-                      {b.folder && <span className="text-vt-muted/70"> · {b.folder}</span>}
-                    </p>
-                    {b.previewDescription && (
-                      <p className="mt-0.5 truncate text-xs text-vt-muted/70" title={b.previewDescription}>
-                        {b.previewDescription}
-                      </p>
-                    )}
-                    {b.linkStatus === 'dead' ? (
-                      <p className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-vt-danger">
-                        <AlertTriangleIcon size={11} />
-                        Link appears dead — edit or delete
-                      </p>
-                    ) : (
-                      <p className="mt-0.5 text-[11px] text-vt-muted/60">
-                        {b.visitCount > 0 && b.lastVisitedAt
-                          ? `Visited ${b.visitCount}× · last ${formatLastVisited(b.lastVisitedAt)}`
-                          : 'Not visited yet'}
-                      </p>
-                    )}
+                {b.previewImage && b.sensitive && !revealedIds.has(b.id) ? (
+                  <button
+                    type="button"
+                    onClick={() => revealThumbnail(b.id)}
+                    className="relative h-[120px] w-full overflow-hidden border-b border-vt-border focus:outline-none focus-visible:ring-2 focus-visible:ring-vt-teal"
+                    title="Sensitive — click to reveal"
+                  >
+                    <img src={b.previewImage} alt="" className="h-full w-full object-cover blur-md" />
+                    <span className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/30 text-xs text-white">
+                      <EyeIcon size={14} />
+                      Sensitive · click to reveal
+                    </span>
+                  </button>
+                ) : b.previewImage ? (
+                  <button
+                    type="button"
+                    onClick={() => setLightboxImage(b.previewImage!)}
+                    className="h-[120px] w-full overflow-hidden border-b border-vt-border focus:outline-none focus-visible:ring-2 focus-visible:ring-vt-teal"
+                    title="View full image"
+                  >
+                    <img src={b.previewImage} alt="" className="h-full w-full object-cover transition hover:brightness-110" />
+                  </button>
+                ) : (
+                  <div className="flex h-[120px] w-full items-center justify-center border-b border-vt-border bg-vt-surface2 text-2xl font-semibold text-vt-muted">
+                    {b.host.replace(/^www\./, '').charAt(0).toUpperCase()}
                   </div>
+                )}
+
+                <div className="flex min-w-0 flex-1 flex-col gap-1 px-3.5 py-3">
+                  <p className="truncate text-sm font-medium" title={b.previewDescription}>
+                    {b.title}
+                  </p>
+                  <p className="truncate text-xs text-vt-muted">
+                    {b.host}
+                    {b.folder && <span> · {b.folder}</span>}
+                  </p>
+                  {b.linkStatus === 'dead' ? (
+                    <p className="flex items-center gap-1 text-[11px] font-medium text-vt-danger">
+                      <AlertTriangleIcon size={11} />
+                      Link appears dead — edit or delete
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-vt-muted">
+                      {b.visitCount > 0 && b.lastVisitedAt
+                        ? `Visited ${b.visitCount}× · last ${formatLastVisited(b.lastVisitedAt)}`
+                        : 'Not visited yet'}
+                    </p>
+                  )}
                 </div>
-                <div className="inline-flex shrink-0 gap-0.5">
-                  <IconButton onClick={() => handleOpen(b.id)} title="Open (Touch ID)" tone="teal">
-                    <ExternalLinkIcon size={14} />
-                  </IconButton>
+
+                <div className="flex gap-0.5 px-2 pb-2">
+                  <button
+                    onClick={() => void handleOpen(b.id)}
+                    title="Open (Touch ID)"
+                    className="flex-1 rounded-lg border-none bg-vt-surface2 py-1.5 text-xs hover:brightness-125"
+                  >
+                    Open
+                  </button>
                   <IconButton onClick={() => handleOpenIncognito(b.id)} title="Open in incognito/private window (Touch ID)">
                     <GlassesIcon size={14} />
                   </IconButton>
@@ -434,15 +427,11 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
                   <IconButton onClick={() => onEdit(b.id)} title="Edit">
                     <PencilIcon size={14} />
                   </IconButton>
-                  <IconButton
-                    onClick={() => setPendingDelete({ id: b.id, title: b.title })}
-                    title="Delete"
-                    tone="danger"
-                  >
+                  <IconButton onClick={() => setPendingDelete({ id: b.id, title: b.title })} title="Delete" tone="danger">
                     <TrashIcon size={14} />
                   </IconButton>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         )}

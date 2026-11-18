@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useVaultStore } from '../stores/vault-store'
 import { useToastStore } from '../stores/toast-store'
 import { copyWithAutoClear } from '../lib/clipboard'
@@ -6,7 +6,7 @@ import { hostnameOf } from '../lib/url'
 import { ConfirmDialog } from './ConfirmDialog'
 import { PageHeader } from './PageHeader'
 import { IconButton } from './IconButton'
-import { UserIcon, CopyIcon, EyeIcon, PencilIcon, TrashIcon, StarIcon, PlusIcon, ShieldIcon } from './icons'
+import { UserIcon, CopyIcon, EyeIcon, StarIcon, PlusIcon, ShieldIcon } from './icons'
 
 interface LoginListProps {
   onEdit: (id: string) => void
@@ -48,6 +48,18 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
   const [editingLabelsFor, setEditingLabelsFor] = useState<string | null>(null)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [activeTab, setActiveTab] = useState<LoginTab>('accounts')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [weakIds, setWeakIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    let cancelled = false
+    window.vaultAPI.analyzePasswords().then((results) => {
+      if (!cancelled) setWeakIds(new Set(results.filter((r) => r.strength === 'weak').map((r) => r.id)))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [logins])
 
   const labelsById = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels])
 
@@ -73,6 +85,16 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
 
   const visible = filtered.slice(0, visibleCount)
   const remaining = filtered.length - visible.length
+  // Falls back to the first row so the detail pane is never empty while the list has items.
+  const sel = filtered.find((l) => l.id === selectedId) ?? filtered[0] ?? null
+
+  function selectLogin(id: string): void {
+    if (id === sel?.id) return
+    // A revealed password must not outlive leaving its login.
+    setRevealed(new Map())
+    setEditingLabelsFor(null)
+    setSelectedId(id)
+  }
 
   function toggleLabelFilter(labelId: string): void {
     setActiveLabelFilters((prev) => {
@@ -232,229 +254,265 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
         }
       />
 
-      <div className="flex-1 overflow-y-auto px-7 py-6">
-        <div className="mb-4 flex gap-1 rounded-lg bg-vt-surface2 p-1 text-xs" style={{ width: 'fit-content' }}>
-          <button
-            onClick={() => setActiveTab('accounts')}
-            className={`rounded-md px-3 py-1.5 ${activeTab === 'accounts' ? 'bg-vt-teal text-vt-bg' : 'text-vt-muted'}`}
-          >
-            Logins
-          </button>
-          <button
-            onClick={() => setActiveTab('files')}
-            className={`rounded-md px-3 py-1.5 ${activeTab === 'files' ? 'bg-vt-teal text-vt-bg' : 'text-vt-muted'}`}
-          >
-            File Passwords{filePasswordCount > 0 ? ` (${filePasswordCount})` : ''}
-          </button>
-        </div>
-
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {labels.map((label) => {
-            const active = activeLabelFilters.has(label.id)
-            return (
+      <div className="flex min-h-0 flex-1">
+        <div className="flex w-[360px] shrink-0 flex-col border-r border-vt-border">
+          <div className="flex flex-col gap-3 border-b border-vt-border px-4 py-4">
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-vt-surface2 p-1 text-xs">
               <button
-                key={label.id}
-                onClick={() => toggleLabelFilter(label.id)}
-                style={
-                  active
-                    ? { backgroundColor: label.color, color: textColorFor(label.color) }
-                    : { borderColor: label.color, color: label.color }
-                }
-                className={`rounded-full px-2.5 py-1 text-xs ${active ? '' : 'border bg-transparent'}`}
+                onClick={() => setActiveTab('accounts')}
+                className={`rounded-md py-1.5 ${activeTab === 'accounts' ? 'bg-vt-bg font-medium text-vt-text' : 'text-vt-muted'}`}
               >
-                {label.name}
+                Accounts
               </button>
-            )
-          })}
-          <button onClick={onManageLabels} className="rounded-lg px-2.5 py-1.5 text-xs text-vt-muted hover:bg-vt-surface2 hover:text-vt-text">
-            Manage labels…
-          </button>
-          <button
-            onClick={toggleSelectMode}
-            className="ml-auto rounded-lg px-2.5 py-1.5 text-xs text-vt-muted hover:bg-vt-surface2 hover:text-vt-text"
-          >
-            {selectMode ? 'Cancel' : 'Select to export…'}
-          </button>
-          {selectMode && (
-            <button
-              onClick={handleExport}
-              disabled={exporting || selected.size === 0}
-              className="rounded-lg bg-vt-teal px-3 py-1.5 text-xs font-medium text-vt-bg hover:brightness-110 disabled:opacity-50"
-            >
-              {exporting ? 'Exporting…' : `Export ${selected.size} selected`}
-            </button>
-          )}
-        </div>
+              <button
+                onClick={() => setActiveTab('files')}
+                className={`rounded-md py-1.5 ${activeTab === 'files' ? 'bg-vt-bg font-medium text-vt-text' : 'text-vt-muted'}`}
+              >
+                File passwords{filePasswordCount > 0 ? ` · ${filePasswordCount}` : ''}
+              </button>
+            </div>
 
-        {exportStatus && <p className="mb-3 text-xs text-vt-muted">{exportStatus}</p>}
+            {/* Capped so a vault with dozens of labels doesn't push the list off screen. */}
+            <div className="flex max-h-[68px] flex-wrap items-center gap-1.5 overflow-y-auto">
+              {labels.map((label) => {
+                const active = activeLabelFilters.has(label.id)
+                return (
+                  <button
+                    key={label.id}
+                    onClick={() => toggleLabelFilter(label.id)}
+                    style={
+                      active
+                        ? { backgroundColor: label.color, color: textColorFor(label.color) }
+                        : { borderColor: label.color, color: label.color }
+                    }
+                    className={`rounded-full px-2.5 py-1 text-xs ${active ? '' : 'border bg-transparent'}`}
+                  >
+                    {label.name}
+                  </button>
+                )
+              })}
+              <button onClick={onManageLabels} className="rounded-lg px-2 py-1 text-xs text-vt-muted hover:bg-vt-surface2 hover:text-vt-text">
+                Manage labels…
+              </button>
+            </div>
 
-        {logins.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-vt-muted">
-            <p className="text-sm">No logins saved yet.</p>
-            <p className="text-xs">Add a site or account to get started.</p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleSelectMode}
+                className="rounded-lg px-2 py-1 text-xs text-vt-muted hover:bg-vt-surface2 hover:text-vt-text"
+              >
+                {selectMode ? 'Cancel' : 'Select to export…'}
+              </button>
+              {selectMode && (
+                <button
+                  onClick={handleExport}
+                  disabled={exporting || selected.size === 0}
+                  className="ml-auto rounded-lg bg-vt-teal px-3 py-1.5 text-xs font-medium text-vt-bg hover:brightness-110 disabled:opacity-50"
+                >
+                  {exporting ? 'Exporting…' : `Export ${selected.size} selected`}
+                </button>
+              )}
+            </div>
+            {exportStatus && <p className="text-xs text-vt-muted">{exportStatus}</p>}
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-vt-muted">
-            {activeTab === 'files' ? (
-              <>
-                <p className="text-sm">No file passwords yet.</p>
-                <p className="text-xs">
-                  Add one with the "Name: password" bulk-paste format (no username) to see it here.
-                </p>
-              </>
+
+          <div className="flex-1 overflow-y-auto p-2">
+            {logins.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center px-4 text-center text-vt-muted">
+                <p className="text-sm">No logins saved yet.</p>
+                <p className="text-xs">Add a site or account to get started.</p>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center px-4 text-center text-vt-muted">
+                {activeTab === 'files' ? (
+                  <>
+                    <p className="text-sm">No file passwords yet.</p>
+                    <p className="text-xs">Add one with the "Name: password" bulk-paste format (no username) to see it here.</p>
+                  </>
+                ) : (
+                  <p className="text-sm">No logins match your filters.</p>
+                )}
+              </div>
             ) : (
-              <p className="text-sm">No logins match your filters.</p>
+              <div className="flex flex-col gap-0.5">
+                {visible.map((login) => {
+                  const active = login.id === sel?.id
+                  return (
+                    <div
+                      key={login.id}
+                      className={`flex items-center gap-2 rounded-lg px-2 ${active ? 'bg-vt-surface2 ring-1 ring-inset ring-vt-border' : 'hover:bg-vt-surface2/60'}`}
+                    >
+                      {selectMode && (
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${login.service}`}
+                          checked={selected.has(login.id)}
+                          onChange={() => toggleSelected(login.id)}
+                        />
+                      )}
+                      <button
+                        onClick={() => selectLogin(login.id)}
+                        aria-pressed={active}
+                        className="flex min-w-0 flex-1 items-center gap-3 border-none bg-transparent py-2 text-left"
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-vt-surface2 text-sm font-semibold text-vt-text">
+                          {login.service.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-sm font-medium text-vt-text">{login.service}</span>
+                          {login.username && <span className="truncate text-xs text-vt-muted">{login.username}</span>}
+                        </span>
+                        {weakIds.has(login.id) && (
+                          <span className="rounded bg-vt-danger/10 px-1.5 py-0.5 text-[11px] text-vt-danger">Weak</span>
+                        )}
+                        {login.favorite && <StarIcon size={14} filled />}
+                      </button>
+                    </div>
+                  )
+                })}
+                {remaining > 0 && (
+                  <button
+                    onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                    className="mt-2 rounded-md px-2 py-1 text-xs text-vt-teal hover:bg-vt-surface2"
+                  >
+                    Load {Math.min(remaining, PAGE_SIZE)} more…
+                  </button>
+                )}
+              </div>
             )}
           </div>
-        ) : (
-          <table className="w-full table-fixed border-collapse">
-            <thead>
-              <tr>
-                <th className="border-b border-vt-border" style={{ width: 28 }}></th>
-                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted" style={{ width: '22%' }}>
-                  Service
-                </th>
-                {activeTab === 'accounts' && (
-                  <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted" style={{ width: '20%' }}>
-                    Username
-                  </th>
-                )}
-                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted">
-                  Password
-                </th>
-                <th className="border-b border-vt-border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-vt-muted">
-                  Labels
-                </th>
-                <th className="border-b border-vt-border px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-vt-muted" style={{ width: 150 }}>
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((login) => (
-                <Fragment key={login.id}>
-                  <tr className="group">
-                    <td className="border-b border-vt-border/60 py-3 pl-3">
-                      {selectMode ? (
-                        <input type="checkbox" checked={selected.has(login.id)} onChange={() => toggleSelected(login.id)} />
-                      ) : (
-                        <button onClick={() => handleToggleFavorite(login.id, login.favorite)} title={login.favorite ? 'Unfavorite' : 'Favorite'}>
-                          <StarIcon size={14} filled={login.favorite} />
-                        </button>
-                      )}
-                    </td>
-                    <td className="truncate border-b border-vt-border/60 px-3 py-3 font-medium">{login.service}</td>
-                    {activeTab === 'accounts' && (
-                      <td className="truncate border-b border-vt-border/60 px-3 py-3 text-xs text-vt-muted">{login.username}</td>
-                    )}
-                    <td className="border-b border-vt-border/60 px-3 py-3">
-                      <span className="font-mono text-xs text-vt-muted">
-                        {revealed.get(login.id) ?? '••••••••••••'}
-                      </span>
-                    </td>
-                    <td className="border-b border-vt-border/60 px-3 py-3">
-                      <div className="flex flex-wrap items-center gap-1">
-                        {login.labelIds.map((id) => {
-                          const label = labelsById.get(id)
-                          if (!label) return null
-                          return (
-                            <span
-                              key={id}
-                              style={{ backgroundColor: label.color, color: textColorFor(label.color) }}
-                              className="rounded-full px-2 py-0.5 text-[10px]"
-                            >
-                              {label.name}
-                            </span>
-                          )
-                        })}
-                        {!selectMode && (
-                          <button
-                            onClick={() => setEditingLabelsFor(editingLabelsFor === login.id ? null : login.id)}
-                            className="rounded-full border border-vt-border px-2 py-0.5 text-[10px] text-vt-muted hover:bg-vt-surface2"
-                          >
-                            + Label
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                    <td className="border-b border-vt-border/60 px-3 py-3 text-right">
-                      {!selectMode && (
-                        <div className="inline-flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                          {activeTab === 'accounts' && (
-                            <IconButton onClick={() => handleCopyUsername(login.username)} title="Copy username">
-                              <UserIcon size={14} />
-                            </IconButton>
-                          )}
-                          <IconButton onClick={() => handleCopyPassword(login.id)} title="Copy password" tone="teal">
-                            <CopyIcon size={14} />
-                          </IconButton>
-                          {login.hasTotp && (
-                            <IconButton onClick={() => void handleCopyTotp(login.id)} title="Copy one-time code" tone="teal">
-                              <ShieldIcon size={14} />
-                            </IconButton>
-                          )}
-                          <IconButton onClick={() => toggleReveal(login.id)} title={revealed.has(login.id) ? 'Hide' : 'Show'}>
-                            <EyeIcon size={14} />
-                          </IconButton>
-                          <IconButton onClick={() => onEdit(login.id)} title="Edit">
-                            <PencilIcon size={14} />
-                          </IconButton>
-                          <IconButton onClick={() => setPendingDelete({ id: login.id, service: login.service })} title="Delete" tone="danger">
-                            <TrashIcon size={14} />
-                          </IconButton>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                  {editingLabelsFor === login.id && (
-                    <tr>
-                      <td colSpan={activeTab === 'accounts' ? 6 : 5} className="border-b border-vt-border/60 bg-vt-surface2/40 px-3 py-2">
-                        <div className="flex flex-wrap gap-1.5">
-                          {labels.length === 0 ? (
-                            <p className="text-[11px] text-vt-muted">
-                              No labels yet —{' '}
-                              <button onClick={onManageLabels} className="underline hover:text-vt-text">
-                                create one
-                              </button>
-                              .
-                            </p>
-                          ) : (
-                            labels.map((label) => {
-                              const assigned = login.labelIds.includes(label.id)
-                              return (
-                                <button
-                                  key={label.id}
-                                  onClick={() => handleToggleLoginLabel(login.id, label.id)}
-                                  style={
-                                    assigned
-                                      ? { backgroundColor: label.color, color: textColorFor(label.color) }
-                                      : { borderColor: label.color, color: label.color }
-                                  }
-                                  className={`rounded-full px-2.5 py-1 text-xs ${assigned ? '' : 'border bg-transparent'}`}
-                                >
-                                  {label.name}
-                                </button>
-                              )
-                            })
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        )}
+        </div>
 
-        {remaining > 0 && (
-          <button
-            onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-            className="mt-2 rounded-md px-2 py-1 text-xs text-vt-teal hover:bg-vt-surface2"
-          >
-            Load {Math.min(remaining, PAGE_SIZE)} more…
-          </button>
-        )}
+        <div className="min-w-0 flex-1 overflow-y-auto px-7 py-6">
+          {!sel ? (
+            <div className="flex h-full items-center justify-center text-sm text-vt-muted">Select a login to see its details.</div>
+          ) : (
+            <div className="flex flex-col gap-6">
+              <div className="flex items-center gap-4">
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-vt-surface2 text-xl font-semibold">
+                  {sel.service.charAt(0).toUpperCase()}
+                </span>
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <h2 className="truncate text-xl font-semibold">{sel.service}</h2>
+                  {hostnameOf(sel.url) && <span className="truncate text-sm text-vt-muted">{hostnameOf(sel.url)}</span>}
+                </div>
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  <IconButton onClick={() => handleToggleFavorite(sel.id, sel.favorite)} title={sel.favorite ? 'Unfavorite' : 'Favorite'}>
+                    <StarIcon size={14} filled={sel.favorite} />
+                  </IconButton>
+                  <button
+                    onClick={() => onEdit(sel.id)}
+                    className="rounded-lg bg-vt-teal px-3 py-1.5 text-sm font-medium text-vt-bg hover:brightness-110 disabled:opacity-50"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-col rounded-xl border border-vt-border bg-vt-surface">
+                {sel.username && (
+                  <div className="flex items-center gap-3 border-b border-vt-border px-4 py-3">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="text-xs text-vt-muted">Username</span>
+                      <span className="truncate text-sm">{sel.username}</span>
+                    </div>
+                    <IconButton onClick={() => handleCopyUsername(sel.username)} title="Copy username">
+                      <UserIcon size={14} />
+                    </IconButton>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 border-b border-vt-border px-4 py-3 last:border-b-0">
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="flex items-center gap-2 text-xs text-vt-muted">
+                      Password
+                      {weakIds.has(sel.id) && (
+                        <span className="rounded bg-vt-danger/10 px-1.5 py-0.5 text-[11px] text-vt-danger">Weak</span>
+                      )}
+                    </span>
+                    <span className="break-all font-mono text-xs">{revealed.get(sel.id) ?? '••••••••••••••••'}</span>
+                  </div>
+                  <IconButton onClick={() => toggleReveal(sel.id)} title={revealed.has(sel.id) ? 'Hide' : 'Show'}>
+                    <EyeIcon size={14} />
+                  </IconButton>
+                  <IconButton onClick={() => handleCopyPassword(sel.id)} title="Copy password" tone="teal">
+                    <CopyIcon size={14} />
+                  </IconButton>
+                </div>
+                {sel.hasTotp && (
+                  <div className="flex items-center gap-3 border-b border-vt-border px-4 py-3 last:border-b-0">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="text-xs text-vt-muted">One-time code</span>
+                      <span className="font-mono text-xs text-vt-muted">Copy to generate a fresh code</span>
+                    </div>
+                    <IconButton onClick={() => void handleCopyTotp(sel.id)} title="Copy one-time code" tone="teal">
+                      <ShieldIcon size={14} />
+                    </IconButton>
+                  </div>
+                )}
+                {hostnameOf(sel.url) && (
+                  <div className="flex flex-col gap-1 px-4 py-3">
+                    <span className="text-xs text-vt-muted">Website</span>
+                    <span className="truncate text-sm">{hostnameOf(sel.url)}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-xs text-vt-muted">Labels</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(editingLabelsFor === sel.id ? labels : labels.filter((l) => sel.labelIds.includes(l.id))).map((label) => {
+                    const assigned = sel.labelIds.includes(label.id)
+                    return (
+                      <button
+                        key={label.id}
+                        onClick={() => editingLabelsFor === sel.id && handleToggleLoginLabel(sel.id, label.id)}
+                        style={
+                          assigned
+                            ? { backgroundColor: label.color, color: textColorFor(label.color) }
+                            : { borderColor: label.color, color: label.color }
+                        }
+                        className={`rounded-full px-2.5 py-1 text-xs ${assigned ? '' : 'border bg-transparent'}`}
+                      >
+                        {label.name}
+                      </button>
+                    )
+                  })}
+                  {editingLabelsFor === sel.id && labels.length === 0 ? (
+                    <button onClick={onManageLabels} className="text-xs text-vt-muted underline hover:text-vt-text">
+                      Create a label
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setEditingLabelsFor(editingLabelsFor === sel.id ? null : sel.id)}
+                      className="rounded-full border border-dashed border-vt-border px-2.5 py-1 text-xs text-vt-muted hover:bg-vt-surface2"
+                    >
+                      {editingLabelsFor === sel.id ? 'Done' : '+ Label'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {sel.notes && (
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs text-vt-muted">Notes</span>
+                  <p className="whitespace-pre-wrap text-sm">{sel.notes}</p>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 border-t border-vt-border pt-4 text-xs text-vt-muted">
+                <span>
+                  Modified {new Date(sel.updatedAt).toLocaleDateString()} · Created {new Date(sel.createdAt).toLocaleDateString()}
+                </span>
+                <button
+                  onClick={() => setPendingDelete({ id: sel.id, service: sel.service })}
+                  className="ml-auto text-sm text-vt-danger hover:underline"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {pendingDelete && (

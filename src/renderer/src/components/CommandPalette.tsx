@@ -73,6 +73,24 @@ function kindLabel(kind: Item['kind']): string {
   }
 }
 
+/** What Enter does for each kind, shown on the highlighted row. */
+function actionHint(kind: Item['kind']): string {
+  switch (kind) {
+    case 'key':
+      return 'Copy value'
+    case 'login':
+      return 'Copy password'
+    case 'recovery':
+      return 'Copy first code'
+    case 'note':
+      return 'Copy note'
+    case 'bookmark':
+      return 'Open'
+    case 'nav':
+      return 'Run'
+  }
+}
+
 export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: CommandPaletteProps): JSX.Element {
   const { apiKeys, logins, recoveryCodes, secureNotes, bookmarks } = useVaultStore()
   const push = useToastStore((s) => s.push)
@@ -194,7 +212,7 @@ export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: Comm
       className="fixed inset-0 z-[200] flex items-start justify-center bg-black/50 pt-24"
     >
       <div
-        className="w-full max-w-lg rounded-2xl border border-vt-border bg-vt-surface shadow-2xl"
+        className="w-full max-w-xl rounded-2xl border border-vt-border bg-vt-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <input
@@ -203,28 +221,47 @@ export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: Comm
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Search everything… (Enter to copy / run)"
-          className="w-full rounded-t-2xl border-b border-vt-border bg-transparent px-4 py-3 text-sm outline-none"
+          className="w-full rounded-t-2xl border-b border-vt-border bg-transparent px-5 py-4 text-base outline-none"
         />
-        <div className="max-h-80 overflow-y-auto p-1">
+        <div className="max-h-96 overflow-y-auto p-2">
           {filtered.length === 0 && <p className="px-3 py-4 text-xs text-vt-muted">No matches.</p>}
           {filtered.map((item, i) => (
-            <button
-              key={`${item.kind}-${item.id}`}
-              onClick={() => void activate(item)}
-              onMouseEnter={() => setActiveIndex(i)}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${
-                i === activeIndex ? 'bg-vt-surface2' : ''
-              }`}
-            >
-              <div className="min-w-0">
-                <p className="truncate">{item.title}</p>
-                <p className="truncate text-xs text-vt-muted">{item.subtitle}</p>
-              </div>
-              <span className="ml-2 shrink-0 rounded-full bg-vt-surface2 px-2 py-0.5 text-[10px] text-vt-muted">
-                {kindLabel(item.kind)}
-              </span>
-            </button>
+            <div key={`${item.kind}-${item.id}`}>
+              {/* Group labels only while idle; ranked search results interleave kinds. */}
+              {!query.trim() && (i === 0 || filtered[i - 1].kind !== item.kind) && (
+                <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-vt-muted">
+                  {kindLabel(item.kind)}
+                </p>
+              )}
+              <button
+                onClick={() => void activate(item)}
+                onMouseEnter={() => setActiveIndex(i)}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
+                  i === activeIndex ? 'bg-vt-surface2' : ''
+                }`}
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-vt-bg text-xs font-semibold">
+                  {item.kind === 'nav' ? '›' : item.title.charAt(0).toUpperCase()}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate">{item.title}</p>
+                  <p className="truncate text-xs text-vt-muted">{item.subtitle}</p>
+                </div>
+                {i === activeIndex ? (
+                  <span className="shrink-0 text-xs text-vt-muted">{actionHint(item.kind)} ↵</span>
+                ) : (
+                  <span className="shrink-0 rounded-full bg-vt-surface2 px-2 py-0.5 text-[10px] text-vt-muted">
+                    {kindLabel(item.kind)}
+                  </span>
+                )}
+              </button>
+            </div>
           ))}
+        </div>
+        <div className="flex gap-4 border-t border-vt-border px-4 py-2.5 text-xs text-vt-muted">
+          <span>↑↓ Move</span>
+          <span>↵ Copy or run</span>
+          <span>esc Close</span>
         </div>
       </div>
     </ModalBackdrop>

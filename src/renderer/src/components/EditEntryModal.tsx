@@ -142,7 +142,7 @@ export function EditEntryModal({ kind, id, onClose }: EditEntryModalProps): JSX.
   return (
     <ModalBackdrop onClose={onClose}>
       <div
-        className="w-full max-w-md rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
+        className="w-full max-w-lg rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-4 text-sm font-semibold">Edit {kind === 'key' ? 'API Key' : 'Login'}</h2>
@@ -181,7 +181,10 @@ export function EditEntryModal({ kind, id, onClose }: EditEntryModalProps): JSX.
               </>
             ) : (
               <>
-                <Field label="Service" value={service} onChange={setService} />
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Service" value={service} onChange={setService} />
+                  <Field label="URL (optional)" value={url} onChange={setUrl} placeholder="https://" />
+                </div>
                 <Field
                   label="Username / email (optional)"
                   value={username}
@@ -196,7 +199,6 @@ export function EditEntryModal({ kind, id, onClose }: EditEntryModalProps): JSX.
                   onGenerate={() => void handleGenerate('password')}
                   generating={generating}
                 />
-                <Field label="URL (optional)" value={url} onChange={setUrl} placeholder="https://" />
                 <Field
                   label={
                     logins.find((l) => l.id === id)?.hasTotp

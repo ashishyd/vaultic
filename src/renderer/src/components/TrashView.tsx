@@ -31,6 +31,12 @@ export function TrashView(): JSX.Element {
   const [loading, setLoading] = useState(true)
   const [confirmEmpty, setConfirmEmpty] = useState(false)
   const [pendingPermanent, setPendingPermanent] = useState<TrashItem | null>(null)
+  const [kindFilter, setKindFilter] = useState<TrashItem['kind'] | 'all'>('all')
+
+  const kindCounts = items.reduce<Record<string, number>>((acc, i) => ({ ...acc, [i.kind]: (acc[i.kind] ?? 0) + 1 }), {})
+  // Falls back to All when the last item of the chosen kind was restored or deleted.
+  const activeKind = kindFilter !== 'all' && kindCounts[kindFilter] ? kindFilter : 'all'
+  const visible = activeKind === 'all' ? items : items.filter((i) => i.kind === activeKind)
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true)
@@ -102,38 +108,56 @@ export function TrashView(): JSX.Element {
         ) : items.length === 0 ? (
           <p className="text-sm text-vt-muted">Trash is empty.</p>
         ) : (
-          <div className="flex flex-col gap-2">
-            {items.map((item) => (
-              <div
-                key={`${item.kind}-${item.id}`}
-                className="flex items-center gap-3 rounded-xl border border-vt-border px-4 py-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-medium">{item.title}</p>
-                    <span className="shrink-0 rounded-full bg-vt-surface2 px-2 py-0.5 text-[10px] text-vt-muted">
-                      {kindLabel(item.kind)}
+          <>
+            <div role="tablist" aria-label="Kinds" className="mb-4 flex flex-wrap gap-1.5">
+              {(['all', ...Object.keys(kindCounts)] as Array<TrashItem['kind'] | 'all'>).map((k) => (
+                <button
+                  key={k}
+                  role="tab"
+                  aria-selected={activeKind === k}
+                  onClick={() => setKindFilter(k)}
+                  className={`rounded-full px-3 py-1 text-xs ${
+                    activeKind === k ? 'bg-vt-text font-medium text-vt-bg' : 'border border-vt-border text-vt-muted hover:bg-vt-surface2'
+                  }`}
+                >
+                  {k === 'all' ? `All · ${items.length}` : `${kindLabel(k)} · ${kindCounts[k]}`}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-col overflow-hidden rounded-xl border border-vt-border">
+              {visible.map((item) => {
+                const left = daysLeft(item.expiresAt)
+                return (
+                  <div
+                    key={`${item.kind}-${item.id}`}
+                    className="flex items-center gap-4 border-b border-vt-border bg-vt-surface px-4 py-3 last:border-b-0"
+                  >
+                    <span className="w-20 shrink-0 text-[11px] uppercase tracking-wider text-vt-muted">{kindLabel(item.kind)}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{item.title}</p>
+                      <p className="truncate text-xs text-vt-muted">{item.subtitle}</p>
+                    </div>
+                    <span className={`w-24 shrink-0 text-right text-xs ${left <= 3 ? 'text-vt-danger' : 'text-vt-muted'}`}>
+                      {left} day{left === 1 ? '' : 's'} left
                     </span>
+                    <button
+                      onClick={() => void handleRestore(item)}
+                      className="rounded-lg border border-vt-border px-3 py-1.5 text-xs hover:bg-vt-surface2"
+                    >
+                      Restore
+                    </button>
+                    <button
+                      onClick={() => setPendingPermanent(item)}
+                      className="rounded-lg px-2.5 py-1.5 text-xs text-vt-danger hover:bg-vt-surface2"
+                    >
+                      Delete forever
+                    </button>
                   </div>
-                  <p className="truncate text-xs text-vt-muted">
-                    {item.subtitle} · {daysLeft(item.expiresAt)}d left
-                  </p>
-                </div>
-                <button
-                  onClick={() => void handleRestore(item)}
-                  className="rounded-lg border border-vt-border px-2.5 py-1.5 text-xs hover:bg-vt-surface2"
-                >
-                  Restore
-                </button>
-                <button
-                  onClick={() => setPendingPermanent(item)}
-                  className="rounded-lg border border-vt-border px-2.5 py-1.5 text-xs text-vt-danger hover:bg-vt-surface2"
-                >
-                  Delete forever
-                </button>
-              </div>
-            ))}
-          </div>
+                )
+              })}
+            </div>
+          </>
         )}
       </div>
 

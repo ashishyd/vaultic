@@ -3,8 +3,7 @@ import { useVaultStore } from '../stores/vault-store'
 import { useToastStore } from '../stores/toast-store'
 import { ConfirmDialog } from './ConfirmDialog'
 import { PageHeader } from './PageHeader'
-import { IconButton } from './IconButton'
-import { EyeIcon, CopyIcon, PencilIcon, TrashIcon, PlusIcon, FolderIcon } from './icons'
+import { EyeIcon, CopyIcon, PlusIcon } from './icons'
 
 interface RecoveryCodesViewProps {
   onEdit: (id: string) => void
@@ -17,6 +16,7 @@ export function RecoveryCodesView({ onEdit, onAdd, onScan }: RecoveryCodesViewPr
   const push = useToastStore((s) => s.push)
   const [revealed, setRevealed] = useState<Map<string, string[]>>(new Map())
   const [pendingDelete, setPendingDelete] = useState<{ id: string; service: string } | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -24,6 +24,16 @@ export function RecoveryCodesView({ onEdit, onAdd, onScan }: RecoveryCodesViewPr
       .filter((r) => !q || r.service.toLowerCase().includes(q))
       .sort((a, b) => a.service.localeCompare(b.service))
   }, [recoveryCodes, search])
+
+  // Falls back to the first service so the detail pane is never empty while the list has items.
+  const sel = filtered.find((r) => r.id === selectedId) ?? filtered[0] ?? null
+
+  function selectEntry(id: string): void {
+    if (id === sel?.id) return
+    // Revealed codes must not outlive leaving their service.
+    setRevealed(new Map())
+    setSelectedId(id)
+  }
 
   async function toggleReveal(id: string): Promise<void> {
     if (revealed.has(id)) {
@@ -90,53 +100,88 @@ export function RecoveryCodesView({ onEdit, onAdd, onScan }: RecoveryCodesViewPr
         }
       />
 
-      <div className="flex-1 overflow-y-auto px-7 py-6">
-        {recoveryCodes.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-vt-muted">
-            <p className="text-sm">No recovery codes yet.</p>
-            <p className="text-xs">Add them manually or scan for exported backup-code files.</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <p className="text-sm text-vt-muted">No services match your search.</p>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {filtered.map((entry) => {
-              const codes = revealed.get(entry.id)
-              return (
-                <div key={entry.id} className="rounded-xl border border-vt-border p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FolderIcon size={14} className="text-vt-muted" />
-                      <h3 className="text-sm font-semibold">{entry.service}</h3>
-                      <span className="text-xs text-vt-muted/70">
+      <div className="flex min-h-0 flex-1">
+        <div className={`w-[360px] shrink-0 overflow-y-auto border-r border-vt-border p-2 ${recoveryCodes.length === 0 ? 'hidden' : ''}`}>
+          {filtered.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center px-4 text-center text-vt-muted">
+              <p className="text-sm">No services match your search.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              {filtered.map((entry) => {
+                const active = entry.id === sel?.id
+                return (
+                  <button
+                    key={entry.id}
+                    onClick={() => selectEntry(entry.id)}
+                    aria-pressed={active}
+                    className={`flex items-center gap-3 rounded-lg border-none px-2.5 py-2 text-left ${
+                      active ? 'bg-vt-surface2 ring-1 ring-inset ring-vt-border' : 'bg-transparent hover:bg-vt-surface2/60'
+                    }`}
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-vt-surface2 text-sm font-semibold">
+                      {entry.service.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-sm font-medium">{entry.service}</span>
+                      <span className="text-xs text-vt-muted">
                         {entry.codeCount} code{entry.codeCount === 1 ? '' : 's'}
                       </span>
-                    </div>
-                    <div className="inline-flex gap-0.5">
-                      <IconButton onClick={() => toggleReveal(entry.id)} title={codes ? 'Hide' : 'Show'}>
-                        <EyeIcon size={14} />
-                      </IconButton>
-                      <IconButton onClick={() => onEdit(entry.id)} title="Edit">
-                        <PencilIcon size={14} />
-                      </IconButton>
-                      <IconButton
-                        onClick={() => setPendingDelete({ id: entry.id, service: entry.service })}
-                        title="Delete"
-                        tone="danger"
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1 overflow-y-auto px-7 py-6">
+          {!sel ? (
+            recoveryCodes.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center text-vt-muted">
+                <p className="text-sm">No recovery codes yet.</p>
+                <p className="text-xs">Add them manually or scan for exported backup-code files.</p>
+              </div>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-vt-muted">Select a service to see its codes.</div>
+            )
+          ) : (
+            <div className="flex flex-col gap-6">
+              <div className="flex items-center gap-4">
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-vt-surface2 text-xl font-semibold">
+                  {sel.service.charAt(0).toUpperCase()}
+                </span>
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <h2 className="truncate text-xl font-semibold">{sel.service}</h2>
+                  <span className="text-sm text-vt-muted">
+                    {sel.codeCount} recovery code{sel.codeCount === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => onEdit(sel.id)}
+                  className="ml-auto shrink-0 rounded-lg bg-vt-teal px-3 py-1.5 text-sm font-medium text-vt-bg hover:brightness-110 disabled:opacity-50"
+                >
+                  Edit
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-xl border border-vt-border bg-vt-surface p-4">
+                {revealed.get(sel.id) ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-vt-muted">Click a code to copy it. The clipboard clears after 30 seconds.</span>
+                      <button
+                        onClick={() => toggleReveal(sel.id)}
+                        className="ml-auto rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2"
                       >
-                        <TrashIcon size={14} />
-                      </IconButton>
+                        Hide
+                      </button>
                     </div>
-                  </div>
-
-                  {entry.notes && <p className="mb-3 text-xs text-vt-muted">{entry.notes}</p>}
-
-                  {codes ? (
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {codes.map((code, i) => (
+                      {(revealed.get(sel.id) ?? []).map((code, i) => (
                         <button
                           key={i}
-                          onClick={() => handleCopyCode(entry.id, i)}
+                          onClick={() => handleCopyCode(sel.id, i)}
                           title="Copy code"
                           className="flex items-center justify-between gap-2 rounded-lg border border-vt-border bg-vt-surface2 px-2.5 py-1.5 text-left font-mono text-xs hover:border-vt-teal"
                         >
@@ -145,16 +190,44 @@ export function RecoveryCodesView({ onEdit, onAdd, onScan }: RecoveryCodesViewPr
                         </button>
                       ))}
                     </div>
-                  ) : (
-                    <p className="font-mono text-xs text-vt-muted">
-                      {'•••• '.repeat(Math.min(entry.codeCount, 6)).trim()}
-                    </p>
-                  )}
+                  </>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-xs text-vt-muted">
+                      {'•••• '.repeat(Math.min(sel.codeCount, 6)).trim()}
+                    </span>
+                    <button
+                      onClick={() => toggleReveal(sel.id)}
+                      className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2"
+                    >
+                      <EyeIcon size={14} />
+                      Reveal with Touch ID
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {sel.notes && (
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs text-vt-muted">Notes</span>
+                  <p className="whitespace-pre-wrap text-sm">{sel.notes}</p>
                 </div>
-              )
-            })}
-          </div>
-        )}
+              )}
+
+              <div className="flex items-center gap-3 border-t border-vt-border pt-4 text-xs text-vt-muted">
+                <span>
+                  Modified {new Date(sel.updatedAt).toLocaleDateString()} · Created {new Date(sel.createdAt).toLocaleDateString()}
+                </span>
+                <button
+                  onClick={() => setPendingDelete({ id: sel.id, service: sel.service })}
+                  className="ml-auto text-sm text-vt-danger hover:underline"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {pendingDelete && (

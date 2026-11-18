@@ -128,6 +128,8 @@ const vaultAPI: VaultAPI = {
   checkForUpdates: () => ipcRenderer.invoke('vault:checkForUpdates'),
 
   getBridgeInfo: () => ipcRenderer.invoke('vault:getBridgeInfo'),
+  getLaunchAtLogin: () => ipcRenderer.invoke('vault:getLaunchAtLogin'),
+  setLaunchAtLogin: (openAtLogin) => ipcRenderer.invoke('vault:setLaunchAtLogin', openAtLogin),
   getNativeHostInfo: () => ipcRenderer.invoke('vault:getNativeHostInfo'),
   installNativeHost: () => ipcRenderer.invoke('vault:installNativeHost'),
   openExtensionFolder: () => ipcRenderer.invoke('vault:openExtensionFolder'),

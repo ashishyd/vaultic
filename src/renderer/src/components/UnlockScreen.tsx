@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrandLogo } from './BrandLogo'
+import { LockIcon } from './icons'
 
 interface UnlockScreenProps {
   hasVault: boolean
@@ -109,23 +110,33 @@ export function UnlockScreen({ hasVault, onUnlocked }: UnlockScreenProps): JSX.E
 
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="w-full max-w-sm rounded-2xl border border-vt-border bg-vt-surface p-8 shadow-2xl">
-        <div className="mb-6 flex flex-col items-center gap-3">
-          <BrandLogo size={48} />
+      <div className="w-full max-w-sm px-6">
+        <div className="mb-8 flex flex-col items-center gap-3">
+          <BrandLogo size={56} />
           <div className="text-center">
-            <h1 className="text-xl font-semibold">Vaultic</h1>
+            <h1 className="text-xl font-semibold">{hasVault ? 'Vaultic is locked' : 'Vaultic'}</h1>
             <p className="text-sm text-vt-muted">Your keys, kept.</p>
           </div>
         </div>
 
         {hasVault && biometricsAvailable && !usingRecovery && (
-          <button
-            onClick={handleUseTouchId}
-            disabled={unlockingWithTouchId}
-            className="mb-4 flex w-full items-center justify-center gap-2 rounded-lg border border-vt-teal/40 bg-vt-teal/10 px-3 py-2 text-sm font-medium text-vt-teal transition hover:bg-vt-teal/20 disabled:opacity-50"
-          >
-            {unlockingWithTouchId ? 'Waiting for Touch ID…' : 'Unlock with Touch ID'}
-          </button>
+          <>
+            <button
+              onClick={handleUseTouchId}
+              disabled={unlockingWithTouchId}
+              className="flex w-full flex-col items-center gap-3 rounded-2xl border border-vt-border bg-vt-surface px-4 py-7 text-sm font-medium transition hover:bg-vt-surface2 disabled:opacity-50"
+            >
+              <span className="text-vt-teal">
+                <LockIcon size={36} />
+              </span>
+              {unlockingWithTouchId ? 'Waiting for Touch ID…' : 'Unlock with Touch ID'}
+            </button>
+            <div className="my-5 flex items-center gap-3 text-xs text-vt-muted">
+              <span className="h-px flex-1 bg-vt-border" />
+              or
+              <span className="h-px flex-1 bg-vt-border" />
+            </div>
+          </>
         )}
 
         {usingRecovery ? (
@@ -211,9 +222,9 @@ export function UnlockScreen({ hasVault, onUnlocked }: UnlockScreenProps): JSX.E
             <button
               type="button"
               onClick={() => setUsingRecovery(true)}
-              className="text-center text-[11px] text-vt-muted hover:text-vt-text"
+              className="mt-1 text-center text-xs text-vt-teal hover:brightness-110"
             >
-              Forgot your master password? Use recovery passphrase
+              Forgot it? Use your recovery passphrase
             </button>
           )}
         </form>

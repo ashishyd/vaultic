@@ -243,6 +243,38 @@ async function fillTabWithRetry({ tabId, username, password, totp }) {
   return { ok: false, error: 'no_password_field' }
 }
 
+// Right-click menu: save a link (or the current video/page) without opening the popup.
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({ id: 'vaultic-save-link', title: 'Save link to Vaultic', contexts: ['link'] })
+  chrome.contextMenus.create({ id: 'vaultic-save-video', title: 'Save this page to Vaultic', contexts: ['video'] })
+  chrome.contextMenus.create({ id: 'vaultic-save-page', title: 'Save page to Vaultic', contexts: ['page'] })
+})
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  // A video's own src is usually a signed/blob URL that won't resolve later, so for
+  // video/page clicks we bookmark the tab itself (e.g. the tweet), not the media file.
+  const url = info.menuItemId === 'vaultic-save-link' ? info.linkUrl : tab?.url
+  saveBookmarkUrl(url, tab?.title).catch(() => {})
+})
+
+async function saveBookmarkUrl(url, title) {
+  if (!url || !/^https?:/.test(url)) return
+  const result = await vaultRequest('saveBookmark', { title: title || url, url })
+  const message = result?.ok
+    ? result.alreadyExists
+      ? 'Already saved to Vaultic'
+      : 'Saved to Vaultic'
+    : result?.error === 'auth_declined'
+      ? 'Touch ID cancelled — not saved'
+      : 'Could not save — open Vaultic and try again'
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icons/icon128.png',
+    title: 'Vaultic',
+    message
+  })
+}
+
 // Toolbar badge: show match count for active tab when possible
 chrome.tabs.onActivated.addListener(async () => {
   try {

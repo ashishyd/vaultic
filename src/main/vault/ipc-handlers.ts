@@ -876,6 +876,11 @@ export function registerVaultIpcHandlers(): void {
   })
 
   ipcMain.handle('vault:getBridgeInfo', () => getBridgeInfo())
+  ipcMain.handle('vault:getLaunchAtLogin', () => app.getLoginItemSettings().openAtLogin)
+  ipcMain.handle('vault:setLaunchAtLogin', (_e, openAtLogin: boolean) => {
+    app.setLoginItemSettings({ openAtLogin })
+    return app.getLoginItemSettings().openAtLogin
+  })
   ipcMain.handle('vault:getNativeHostInfo', () => getNativeHostInstallInfo())
   ipcMain.handle('vault:installNativeHost', () => installNativeMessagingHost())
   ipcMain.handle('vault:openExtensionFolder', async () => {

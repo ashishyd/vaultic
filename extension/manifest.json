@@ -23,7 +23,9 @@
     "storage",
     "scripting",
     "nativeMessaging",
-    "tabs"
+    "tabs",
+    "contextMenus",
+    "notifications"
   ],
   "host_permissions": [
     "http://127.0.0.1:17843/*",

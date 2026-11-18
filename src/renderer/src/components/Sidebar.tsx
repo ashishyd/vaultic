@@ -51,10 +51,12 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
     <button
       onClick={onClick}
       title={label}
-      className="flex items-center gap-2.5 rounded-lg border-none py-2.5 px-2.5 text-left transition"
-      style={{ background: active ? '#16213A' : 'transparent', color: active ? '#E7ECF7' : '#8B99B8' }}
+      aria-current={active ? 'page' : undefined}
+      className={`flex items-center gap-2.5 rounded-lg border-none py-2 px-2.5 text-left transition ${
+        active ? 'bg-vt-surface2 text-vt-text' : 'bg-transparent text-vt-muted hover:bg-vt-surface2/60 hover:text-vt-text'
+      }`}
     >
-      {icon}
+      <span className={`flex shrink-0 ${active ? 'text-vt-teal' : ''}`}>{icon}</span>
       {sidebarOpen && (
         <>
           <span className="whitespace-nowrap text-sm">{label}</span>
@@ -75,6 +77,9 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
       </div>
 
       <nav className="flex flex-col gap-0.5 px-2.5">
+        {sidebarOpen && (
+          <span className="px-2.5 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-vt-muted">Vault</span>
+        )}
         {navItem(section === 'keys', () => setSection('keys'), <KeyIcon />, 'API Keys', apiKeys.length)}
         {navItem(section === 'logins', () => setSection('logins'), <LockIcon />, 'Logins', logins.length)}
         {navItem(
@@ -93,10 +98,13 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
       {sidebarOpen && (weakCount > 0 || reusedCount > 0) && (
         <button
           onClick={() => setSection('analysis')}
-          className="mx-2.5 mt-3.5 flex items-center gap-2 rounded-lg border border-vt-danger/30 bg-vt-danger/10 px-2.5 py-2 text-left text-xs text-vt-danger"
+          className="mx-2.5 mt-5 flex flex-col gap-1.5 rounded-xl border border-vt-border bg-vt-bg p-3 text-left hover:bg-vt-surface2"
         >
-          <AlertTriangleIcon size={14} />
-          <span>
+          <span className="flex items-center gap-2 text-xs font-medium text-vt-text">
+            <AlertTriangleIcon size={14} />
+            Password health
+          </span>
+          <span className="text-xs text-vt-danger">
             {weakCount > 0 && `${weakCount} weak`}
             {weakCount > 0 && reusedCount > 0 && ' · '}
             {reusedCount > 0 && `${reusedCount} reused`}
@@ -130,7 +138,12 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
           className="flex items-center gap-2.5 rounded-lg border-none bg-transparent py-2.5 px-2.5 text-left text-vt-muted transition hover:bg-vt-surface2 hover:text-vt-text"
         >
           <LockIcon size={16} />
-          {sidebarOpen && <span className="text-sm">Lock Vault</span>}
+          {sidebarOpen && (
+            <>
+              <span className="text-sm">Lock Vault</span>
+              <span className="ml-auto font-mono text-[11px]">⌘L</span>
+            </>
+          )}
         </button>
       </div>
     </div>

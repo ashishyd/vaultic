@@ -371,6 +371,8 @@ export interface VaultAPI {
     extensionId: string
     nativeHostName: string
   }>
+  getLaunchAtLogin: () => Promise<boolean>
+  setLaunchAtLogin: (openAtLogin: boolean) => Promise<boolean>
   getNativeHostInfo: () => Promise<{
     hostName: string
     extensionId: string
