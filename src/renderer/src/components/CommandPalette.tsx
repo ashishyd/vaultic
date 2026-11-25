@@ -13,7 +13,7 @@ interface CommandPaletteProps {
 }
 
 type Item =
-  | { kind: 'key' | 'login' | 'recovery' | 'note' | 'bookmark'; id: string; title: string; subtitle: string }
+  | { kind: 'key' | 'login' | 'recovery' | 'note' | 'bookmark' | 'label'; id: string; title: string; subtitle: string }
   | { kind: 'nav'; id: string; title: string; subtitle: string; action: 'section' | 'settings' | 'lock'; section?: Section }
 
 const NAV_ITEMS: Item[] = [
@@ -68,8 +68,32 @@ function kindLabel(kind: Item['kind']): string {
       return 'Note'
     case 'bookmark':
       return 'Bookmark'
+    case 'label':
+      return 'Label'
     case 'nav':
       return 'Action'
+  }
+}
+
+/** Group heading text and display order (flat list is sorted by this so arrow keys follow what is on screen). */
+const GROUP_ORDER: Item['kind'][] = ['login', 'key', 'recovery', 'note', 'bookmark', 'label', 'nav']
+
+function groupLabel(kind: Item['kind']): string {
+  switch (kind) {
+    case 'key':
+      return 'API keys'
+    case 'login':
+      return 'Logins'
+    case 'recovery':
+      return 'Recovery codes'
+    case 'note':
+      return 'Secure notes'
+    case 'bookmark':
+      return 'Bookmarks'
+    case 'label':
+      return 'Labels'
+    case 'nav':
+      return 'Actions'
   }
 }
 
@@ -86,13 +110,15 @@ function actionHint(kind: Item['kind']): string {
       return 'Copy note'
     case 'bookmark':
       return 'Open'
+    case 'label':
+      return 'Go to Logins'
     case 'nav':
       return 'Run'
   }
 }
 
 export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: CommandPaletteProps): JSX.Element {
-  const { apiKeys, logins, recoveryCodes, secureNotes, bookmarks } = useVaultStore()
+  const { apiKeys, logins, recoveryCodes, secureNotes, bookmarks, labels } = useVaultStore()
   const push = useToastStore((s) => s.push)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -134,23 +160,36 @@ export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: Comm
       title: b.title,
       subtitle: b.host
     }))
-    return [...NAV_ITEMS, ...keyItems, ...loginItems, ...recoveryItems, ...noteItems, ...bookmarkItems]
-  }, [apiKeys, logins, recoveryCodes, secureNotes, bookmarks])
+    // Label names only; Enter opens Logins, where labels are applied.
+    const labelItems: Item[] = labels.map((l) => ({ kind: 'label', id: l.id, title: l.name, subtitle: 'Label' }))
+    return [...NAV_ITEMS, ...keyItems, ...loginItems, ...recoveryItems, ...noteItems, ...bookmarkItems, ...labelItems]
+  }, [apiKeys, logins, recoveryCodes, secureNotes, bookmarks, labels])
 
   const filtered = useMemo(() => {
-    const q = query.trim()
+    const raw = query.trimStart()
+    // Leading prefix narrows the pool: > actions, / sections, # labels. It is stripped before matching.
+    const prefix = '>/#'.includes(raw.charAt(0)) ? raw.charAt(0) : ''
+    const q = (prefix ? raw.slice(1) : raw).trim()
+    let pool = items
+    if (prefix === '>') pool = items.filter((i) => i.kind === 'nav')
+    else if (prefix === '/') pool = items.filter((i) => i.kind === 'nav' && i.action === 'section')
+    else if (prefix === '#') pool = items.filter((i) => i.kind === 'label')
+
+    let picked: Item[]
     if (!q) {
       // Prefer vault items when idle; still show a few nav shortcuts.
-      const vault = items.filter((i) => i.kind !== 'nav').slice(0, 16)
-      return [...NAV_ITEMS.slice(0, 4), ...vault].slice(0, 20)
+      if (prefix) picked = pool.slice(0, 20)
+      else picked = [...NAV_ITEMS.slice(0, 4), ...items.filter((i) => i.kind !== 'nav' && i.kind !== 'label').slice(0, 16)].slice(0, 20)
+    } else {
+      picked = pool
+        .map((item) => ({ item, score: fuzzyMatch([item.title, item.subtitle], q) }))
+        .filter((r) => r.score >= 0)
+        .sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title))
+        .slice(0, 20)
+        .map((r) => r.item)
     }
-
-    return items
-      .map((item) => ({ item, score: fuzzyMatch([item.title, item.subtitle], q) }))
-      .filter((r) => r.score >= 0)
-      .sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title))
-      .slice(0, 20)
-      .map((r) => r.item)
+    // Stable sort by group keeps relevance order inside each group.
+    return [...picked].sort((a, b) => GROUP_ORDER.indexOf(a.kind) - GROUP_ORDER.indexOf(b.kind))
   }, [items, query])
 
   useEffect(() => {
@@ -163,6 +202,10 @@ export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: Comm
       else if (item.action === 'settings') onSettings()
       else if (item.action === 'lock') onLock()
       else onClose()
+      return
+    }
+    if (item.kind === 'label') {
+      onNavigate('logins')
       return
     }
 
@@ -227,11 +270,8 @@ export function CommandPalette({ onClose, onNavigate, onSettings, onLock }: Comm
           {filtered.length === 0 && <p className="px-3 py-4 text-xs text-vt-muted">No matches.</p>}
           {filtered.map((item, i) => (
             <div key={`${item.kind}-${item.id}`}>
-              {/* Group labels only while idle; ranked search results interleave kinds. */}
-              {!query.trim() && (i === 0 || filtered[i - 1].kind !== item.kind) && (
-                <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-vt-muted">
-                  {kindLabel(item.kind)}
-                </p>
+              {(i === 0 || filtered[i - 1].kind !== item.kind) && (
+                <p className="px-3 pb-1 pt-3 text-xs text-vt-muted">{groupLabel(item.kind)}</p>
               )}
               <button
                 onClick={() => void activate(item)}

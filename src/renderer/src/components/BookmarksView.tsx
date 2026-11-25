@@ -50,6 +50,7 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
   const [renameValue, setRenameValue] = useState('')
   const [renaming, setRenaming] = useState(false)
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null)
+  const [listView, setListView] = useState(false)
 
   useEffect(() => {
     if (bookmarkPreviewBackfillTriggered || bookmarks.length === 0) return
@@ -224,6 +225,18 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
         searchPlaceholder="Search bookmarks…"
         actions={
           <>
+            <div role="group" aria-label="View" className="flex overflow-hidden rounded-lg border border-vt-border text-xs">
+              {(['Grid', 'List'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  aria-pressed={listView === (mode === 'List')}
+                  onClick={() => setListView(mode === 'List')}
+                  className={`px-3 py-2 ${listView === (mode === 'List') ? 'bg-vt-surface2 text-vt-text' : 'text-vt-muted'}`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
             <IconButton onClick={() => void handleRefetchAll()} title="Refetch all missing previews">
               <RefreshIcon size={16} className={refetching ? 'animate-spin' : undefined} />
             </IconButton>
@@ -347,8 +360,59 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
         ) : filtered.length === 0 ? (
           <p className="text-sm text-vt-muted">No bookmarks match your search.</p>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4">
-            {filtered.map((b) => (
+          <div className={listView ? 'flex flex-col gap-2' : 'grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4'}>
+            {filtered.map((b) =>
+              listView ? (
+                <article
+                  key={b.id}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/vaultic-bookmark-id', b.id)
+                    e.dataTransfer.effectAllowed = 'move'
+                  }}
+                  className={`flex items-center gap-3 rounded-xl border bg-vt-surface px-3.5 py-2.5 ${
+                    b.linkStatus === 'dead' ? 'border-vt-danger/50' : 'border-vt-border'
+                  }`}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-vt-surface2 text-sm font-semibold text-vt-muted">
+                    {b.host.replace(/^www\./, '').charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium" title={b.previewDescription}>
+                      {b.title}
+                    </p>
+                    <p className="truncate text-xs text-vt-muted">
+                      {b.host}
+                      {b.folder && <span> · {b.folder}</span>}
+                      {b.linkStatus === 'dead' && <span className="text-vt-danger"> · Link appears dead</span>}
+                    </p>
+                  </div>
+                  <span className="hidden shrink-0 text-[11px] text-vt-muted sm:block">
+                    {b.visitCount > 0 && b.lastVisitedAt ? `${b.visitCount}× · ${formatLastVisited(b.lastVisitedAt)}` : 'Not visited yet'}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <button
+                      onClick={() => void handleOpen(b.id)}
+                      title="Open (Touch ID)"
+                      className="rounded-lg border-none bg-vt-surface2 px-3 py-1.5 text-xs hover:brightness-125"
+                    >
+                      Open
+                    </button>
+                    <IconButton onClick={() => handleOpenIncognito(b.id)} title="Open in incognito/private window (Touch ID)">
+                      <GlassesIcon size={14} />
+                    </IconButton>
+                    <IconButton onClick={() => handleCopy(b.id)} title="Copy link">
+                      <CopyIcon size={14} />
+                    </IconButton>
+                    <IconButton onClick={() => onEdit(b.id)} title="Edit">
+                      <PencilIcon size={14} />
+                    </IconButton>
+                    <IconButton onClick={() => setPendingDelete({ id: b.id, title: b.title })} title="Delete" tone="danger">
+                      <TrashIcon size={14} />
+                    </IconButton>
+                  </div>
+                </article>
+              ) : (
               <article
                 key={b.id}
                 draggable
@@ -432,7 +496,8 @@ export function BookmarksView({ onEdit, onAdd, onImport }: BookmarksViewProps): 
                   </IconButton>
                 </div>
               </article>
-            ))}
+              )
+            )}
           </div>
         )}
       </div>

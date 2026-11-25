@@ -72,6 +72,19 @@ export function PasswordHealthView(): JSX.Element {
     [rows]
   )
 
+  const strongUnique = useMemo(
+    () => rows.filter((r) => r.info?.strength === 'strong' && !r.info.reused).length,
+    [rows]
+  )
+  const breakdown: Array<{ label: string; count: number; bar: string }> = [
+    { label: 'Weak passwords', count: stats.weak, bar: 'bg-vt-danger' },
+    { label: 'Reused across sites', count: stats.reused, bar: 'bg-vt-danger' },
+    { label: 'Older than a year', count: stats.stale, bar: 'bg-vt-muted' },
+    { label: 'Strong and unique', count: strongUnique, bar: 'bg-vt-teal' }
+  ]
+
+  const score = stats.total === 0 ? 100 : Math.round(((stats.total - issueRows.length) / stats.total) * 100)
+
   async function handleConfirmAiSuggestLabels(): Promise<void> {
     setShowAiDisclosure(false)
     setSuggestingLabels(true)
@@ -146,6 +159,53 @@ export function PasswordHealthView(): JSX.Element {
         </p>
         {usedCli && !suggestError && <p className="mb-3 text-xs text-vt-muted">Suggested using the {usedCli} CLI.</p>}
         {suggestError && <p className="mb-3 text-xs text-vt-danger">{suggestError}</p>}
+
+        {stats.total > 0 && (
+          <div className="mb-4 flex items-center gap-6 rounded-2xl border border-vt-border bg-vt-surface p-5">
+            <svg width="96" height="96" viewBox="0 0 132 132" role="img" aria-label={`Vault score ${score} out of 100`}>
+              <circle cx="66" cy="66" r="54" fill="none" strokeWidth="12" className="stroke-vt-border" />
+              <circle
+                cx="66"
+                cy="66"
+                r="54"
+                fill="none"
+                strokeWidth="12"
+                strokeLinecap="round"
+                strokeDasharray={`${(score / 100) * 339} 339`}
+                transform="rotate(-90 66 66)"
+                className={score >= 70 ? 'stroke-vt-teal' : 'stroke-vt-danger'}
+              />
+              <text x="66" y="76" textAnchor="middle" fontSize="34" fontWeight="700" className="fill-vt-text">
+                {score}
+              </text>
+            </svg>
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-semibold">
+                {issueRows.length === 0 ? 'All logins look good' : `${issueRows.length} login${issueRows.length === 1 ? '' : 's'} need attention`}
+              </span>
+              <span className="text-xs text-vt-muted">Score is the share of logins with no weak, reused or stale password.</span>
+            </div>
+          </div>
+        )}
+
+        {stats.total > 0 && (
+          <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-vt-border bg-vt-surface p-5">
+            {breakdown.map(({ label, count, bar }) => (
+              <div key={label}>
+                <div className="mb-1 flex items-baseline justify-between text-xs">
+                  <span className="text-vt-muted">{label}</span>
+                  <span className="font-medium">{count}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-vt-surface2">
+                  <div
+                    className={`h-full rounded-full ${bar}`}
+                    style={{ width: `${Math.min(100, Math.max(0, (count / stats.total) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard label="Total logins" value={stats.total} />

@@ -8,7 +8,7 @@ import type {
   BookmarkSummary
 } from '../../../preload/api-types'
 
-export type Section = 'keys' | 'logins' | 'recovery' | 'notes' | 'bookmarks' | 'analysis' | 'trash'
+export type Section = 'keys' | 'logins' | 'recovery' | 'notes' | 'bookmarks' | 'analysis' | 'trash' | 'settings'
 
 interface VaultUIState {
   unlocked: boolean
@@ -39,7 +39,7 @@ interface VaultUIState {
 export const useVaultStore = create<VaultUIState>((set) => ({
   unlocked: false,
   hasVault: false,
-  section: 'keys',
+  section: 'logins',
   search: '',
   focusSearchToken: 0,
   apiKeys: [],

@@ -19,7 +19,7 @@ import { RecoveryCodesFormModal } from './components/RecoveryCodesFormModal'
 import { SecureNoteFormModal } from './components/SecureNoteFormModal'
 import { ImportLoginsModal } from './components/ImportLoginsModal'
 import { EditEntryModal } from './components/EditEntryModal'
-import { SettingsModal } from './components/SettingsModal'
+import { SettingsView } from './components/SettingsView'
 import { ToastContainer } from './components/ToastContainer'
 import { CommandPalette } from './components/CommandPalette'
 import { LabelManagerModal } from './components/LabelManagerModal'
@@ -46,7 +46,6 @@ export default function App(): JSX.Element {
   const [showScan, setShowScan] = useState(false)
   const [showLeakScan, setShowLeakScan] = useState(false)
   const [showImportLogins, setShowImportLogins] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [showLabelManager, setShowLabelManager] = useState(false)
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null)
@@ -132,7 +131,7 @@ export default function App(): JSX.Element {
         />
       ) : (
         <div className="flex h-screen">
-          <Sidebar onLock={() => void handleLock()} onSettings={() => setShowSettings(true)} />
+          <Sidebar onLock={() => void handleLock()} onSettings={() => setSection('settings')} />
           <main className="flex-1 overflow-hidden">
             {section === 'keys' && (
               <ApiKeyList
@@ -169,13 +168,13 @@ export default function App(): JSX.Element {
             )}
             {section === 'analysis' && <PasswordHealthView />}
             {section === 'trash' && <TrashView />}
+            {section === 'settings' && <SettingsView />}
           </main>
 
           {showAdd && <AddEntryModal section={section} onClose={() => setShowAdd(false)} />}
           {showScan && <ScanImportModal onClose={() => setShowScan(false)} />}
           {showLeakScan && <LeakScanModal onClose={() => setShowLeakScan(false)} />}
           {showImportLogins && <ImportLoginsModal onClose={() => setShowImportLogins(false)} />}
-          {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
           {editTarget && (
             <EditEntryModal kind={editTarget.kind} id={editTarget.id} onClose={() => setEditTarget(null)} />
           )}
@@ -187,7 +186,7 @@ export default function App(): JSX.Element {
                 setShowPalette(false)
               }}
               onSettings={() => {
-                setShowSettings(true)
+                setSection('settings')
                 setShowPalette(false)
               }}
               onLock={() => {

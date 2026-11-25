@@ -8,7 +8,6 @@ import {
   LifeBuoyIcon,
   NoteIcon,
   BookmarkIcon,
-  AlertTriangleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   TrashIcon
@@ -26,15 +25,26 @@ interface SidebarProps {
 export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
   const { section, setSection, apiKeys, logins, recoveryCodes, secureNotes, bookmarks } = useVaultStore()
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [weakCount, setWeakCount] = useState(0)
-  const [reusedCount, setReusedCount] = useState(0)
+  // Logins with a weak, reused or stale password, as on the Password Health page.
+  const [issueCount, setIssueCount] = useState(0)
+  const [trashCount, setTrashCount] = useState(0)
+
+  // Re-read on every section change so a delete or restore elsewhere is reflected.
+  useEffect(() => {
+    let cancelled = false
+    window.vaultAPI.listTrash().then((items) => {
+      if (!cancelled) setTrashCount(items.length)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [section, logins, apiKeys, recoveryCodes, secureNotes, bookmarks])
 
   useEffect(() => {
     let cancelled = false
     window.vaultAPI.analyzePasswords().then((results) => {
       if (cancelled) return
-      setWeakCount(results.filter((r) => r.strength === 'weak').length)
-      setReusedCount(results.filter((r) => r.reused).length)
+      setIssueCount(results.filter((r) => r.strength === 'weak' || r.reused || r.stale).length)
     })
     return () => {
       cancelled = true
@@ -46,7 +56,8 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
     onClick: () => void,
     icon: JSX.Element,
     label: string,
-    count?: number
+    count?: number,
+    danger?: boolean
   ): JSX.Element => (
     <button
       onClick={onClick}
@@ -60,7 +71,15 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
       {sidebarOpen && (
         <>
           <span className="whitespace-nowrap text-sm">{label}</span>
-          {count !== undefined && <span className="ml-auto text-xs text-vt-muted">{count}</span>}
+          {count !== undefined && (
+            <span
+              className={`ml-auto text-xs ${
+                danger ? 'rounded-full bg-vt-danger/15 px-1.5 py-0.5 font-medium text-vt-danger' : 'text-vt-muted'
+              }`}
+            >
+              {count}
+            </span>
+          )}
         </>
       )}
     </button>
@@ -68,8 +87,8 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
 
   return (
     <div
-      className="flex h-full shrink-0 flex-col border-r border-vt-border bg-vt-surface py-4 transition-[width] duration-150"
-      style={{ width: sidebarOpen ? '210px' : '58px' }}
+      className="flex h-full shrink-0 flex-col border-r border-vt-border bg-vt-surface pb-4 pt-9 transition-[width] duration-150"
+      style={{ width: sidebarOpen ? '232px' : '58px' }}
     >
       <div className="mb-2 flex items-center gap-2.5 px-4 pb-4">
         <BrandLogo size={24} />
@@ -80,8 +99,8 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
         {sidebarOpen && (
           <span className="px-2.5 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-vt-muted">Vault</span>
         )}
-        {navItem(section === 'keys', () => setSection('keys'), <KeyIcon />, 'API Keys', apiKeys.length)}
         {navItem(section === 'logins', () => setSection('logins'), <LockIcon />, 'Logins', logins.length)}
+        {navItem(section === 'keys', () => setSection('keys'), <KeyIcon />, 'API Keys', apiKeys.length)}
         {navItem(
           section === 'recovery',
           () => setSection('recovery'),
@@ -91,26 +110,19 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
         )}
         {navItem(section === 'notes', () => setSection('notes'), <NoteIcon />, 'Secure Notes', secureNotes.length)}
         {navItem(section === 'bookmarks', () => setSection('bookmarks'), <BookmarkIcon />, 'Bookmarks', bookmarks.length)}
-        {navItem(section === 'analysis', () => setSection('analysis'), <ShieldIcon />, 'Password Health')}
-        {navItem(section === 'trash', () => setSection('trash'), <TrashNavIcon />, 'Recently Deleted')}
+        {sidebarOpen && (
+          <span className="px-2.5 pb-1.5 pt-4 text-[11px] font-medium uppercase tracking-wider text-vt-muted">Care</span>
+        )}
+        {navItem(
+          section === 'analysis',
+          () => setSection('analysis'),
+          <ShieldIcon />,
+          'Password Health',
+          issueCount > 0 ? issueCount : undefined,
+          true
+        )}
+        {navItem(section === 'trash', () => setSection('trash'), <TrashNavIcon />, 'Recently Deleted', trashCount)}
       </nav>
-
-      {sidebarOpen && (weakCount > 0 || reusedCount > 0) && (
-        <button
-          onClick={() => setSection('analysis')}
-          className="mx-2.5 mt-5 flex flex-col gap-1.5 rounded-xl border border-vt-border bg-vt-bg p-3 text-left hover:bg-vt-surface2"
-        >
-          <span className="flex items-center gap-2 text-xs font-medium text-vt-text">
-            <AlertTriangleIcon size={14} />
-            Password health
-          </span>
-          <span className="text-xs text-vt-danger">
-            {weakCount > 0 && `${weakCount} weak`}
-            {weakCount > 0 && reusedCount > 0 && ' · '}
-            {reusedCount > 0 && `${reusedCount} reused`}
-          </span>
-        </button>
-      )}
 
       <div className="mt-auto flex flex-col gap-0.5 px-2.5">
         <button
@@ -124,7 +136,10 @@ export function Sidebar({ onLock, onSettings }: SidebarProps): JSX.Element {
         <button
           onClick={onSettings}
           title="Settings"
-          className="flex items-center gap-2.5 rounded-lg border-none bg-transparent py-2.5 px-2.5 text-left text-vt-muted transition hover:bg-vt-surface2 hover:text-vt-text"
+          aria-current={section === 'settings' ? 'page' : undefined}
+          className={`flex items-center gap-2.5 rounded-lg border-none py-2.5 px-2.5 text-left transition hover:bg-vt-surface2 hover:text-vt-text ${
+            section === 'settings' ? 'bg-vt-surface2 text-vt-text' : 'bg-transparent text-vt-muted'
+          }`}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <circle cx="12" cy="12" r="3" />

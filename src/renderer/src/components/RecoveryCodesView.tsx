@@ -193,12 +193,12 @@ export function RecoveryCodesView({ onEdit, onAdd, onScan }: RecoveryCodesViewPr
                   </>
                 ) : (
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-xs text-vt-muted">
+                    <span className="min-w-0 truncate font-mono text-xs text-vt-muted">
                       {'•••• '.repeat(Math.min(sel.codeCount, 6)).trim()}
                     </span>
                     <button
                       onClick={() => toggleReveal(sel.id)}
-                      className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2"
+                      className="ml-auto inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2"
                     >
                       <EyeIcon size={14} />
                       Reveal with Touch ID

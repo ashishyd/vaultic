@@ -68,6 +68,14 @@ export function ApiKeyList({ onEdit, onAdd, onScan, onLeakScan }: ApiKeyListProp
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [apiKeys, search, attentionOnly])
 
+  const stats = useMemo(() => {
+    const now = Date.now()
+    return {
+      expiring: apiKeys.filter((k) => k.expiresAt !== undefined && k.expiresAt - now < 30 * DAY_MS).length,
+      unused: apiKeys.filter((k) => now - (k.lastUsedAt ?? k.createdAt) > STALE_DAYS * DAY_MS).length
+    }
+  }, [apiKeys])
+
   // Falls back to the first key so the detail pane is never empty while the list has items.
   const flat = useMemo(() => grouped.flatMap(([, keys]) => keys), [grouped])
   const sel = flat.find((k) => k.id === selectedId) ?? flat[0] ?? null
@@ -188,7 +196,9 @@ export function ApiKeyList({ onEdit, onAdd, onScan, onLeakScan }: ApiKeyListProp
               {attentionOf(key) && (
                 <span className="rounded-md border border-vt-danger px-1.5 text-[10px] text-vt-danger">{attentionOf(key)}</span>
               )}
-              <span className="font-mono text-xs text-vt-muted">••••••</span>
+              <span className="text-[11px] text-vt-muted">
+                {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleDateString() : 'Never used'}
+              </span>
             </button>
           )
         })}
@@ -242,6 +252,23 @@ export function ApiKeyList({ onEdit, onAdd, onScan, onLeakScan }: ApiKeyListProp
           </>
         }
       />
+
+      {apiKeys.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 border-b border-vt-border px-7 py-4">
+          <div className="rounded-xl border border-vt-border p-3">
+            <div className="text-xs text-vt-muted">Keys</div>
+            <div className="text-xl font-semibold">{apiKeys.length}</div>
+          </div>
+          <div className="rounded-xl border border-vt-border p-3">
+            <div className="text-xs text-vt-muted">Expiring in 30 days</div>
+            <div className={`text-xl font-semibold ${stats.expiring > 0 ? 'text-vt-danger' : ''}`}>{stats.expiring}</div>
+          </div>
+          <div className="rounded-xl border border-vt-border p-3">
+            <div className="text-xs text-vt-muted">Unused for 90 days</div>
+            <div className={`text-xl font-semibold ${stats.unused > 0 ? 'text-vt-danger' : ''}`}>{stats.unused}</div>
+          </div>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <div className="w-[360px] shrink-0 overflow-y-auto border-r border-vt-border p-2">

@@ -2,13 +2,9 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useToastStore } from '../stores/toast-store'
 import { RecoveryModal } from './RecoveryModal'
 import { ConfirmDialog } from './ConfirmDialog'
-import { useEscapeKey } from '../lib/use-escape-key'
-import { ModalBackdrop } from './ModalBackdrop'
+import { useVaultStore } from '../stores/vault-store'
+import { PageHeader } from './PageHeader'
 import type { StorageInfo } from '../../../preload/api-types'
-
-interface SettingsModalProps {
-  onClose: () => void
-}
 
 const AUTO_LOCK_OPTIONS: Array<{ label: string; minutes: number }> = [
   { label: 'Never', minutes: 0 },
@@ -24,9 +20,15 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
+const SECTION_TITLES: string[] = ['Security', 'Browser extension', 'Backup and sync', 'Storage and about']
+
+function sectionId(title: string): string {
+  return title.toLowerCase().replace(/ /g, '-')
+}
+
 function SettingGroup({ title, children }: { title: string; children: ReactNode }): JSX.Element {
   return (
-    <section className="flex flex-col gap-2">
+    <section id={sectionId(title)} className="flex flex-col gap-2">
       <h3 className="text-[11px] font-semibold uppercase tracking-wider text-vt-muted">{title}</h3>
       <div className="flex flex-col rounded-xl border border-vt-border">{children}</div>
     </section>
@@ -55,10 +57,14 @@ function SettingRow({
   )
 }
 
-export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
+export function SettingsView(): JSX.Element {
   const push = useToastStore((s) => s.push)
+  const setSection = useVaultStore((s) => s.setSection)
+  // A restore replaces the vault, so leave the page like the old modal's close did.
+  const onClose = (): void => setSection('logins')
   const [autoLockMinutes, setAutoLockMinutes] = useState(5)
   const [loading, setLoading] = useState(true)
+  const [activeSection, setActiveSection] = useState(SECTION_TITLES[0])
   const [saving, setSaving] = useState(false)
   const [showRecovery, setShowRecovery] = useState(false)
   const [hasCachedKey, setHasCachedKey] = useState(false)
@@ -89,11 +95,6 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
   const [showCloudRestore, setShowCloudRestore] = useState(false)
   const [cloudRestorePassword, setCloudRestorePassword] = useState('')
   const [cloudRestoreError, setCloudRestoreError] = useState<string | null>(null)
-
-  useEscapeKey(
-    onClose,
-    !showRecovery && !confirmForgetTouchId && !showChangePassword && !showRestore && !showCloudRestore
-  )
 
   useEffect(() => {
     let cancelled = false
@@ -301,12 +302,29 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
   }
 
   return (
-    <ModalBackdrop onClose={onClose}>
-      <div
-        className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-vt-border bg-vt-surface p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="mb-5 text-sm font-semibold">Settings</h2>
+    <div className="flex h-full flex-col">
+      <PageHeader title="Settings" />
+      <div className="flex-1 overflow-y-auto px-7 py-6">
+       <div className="flex gap-8">
+        {!loading && (
+          <nav className="sticky top-0 flex w-44 shrink-0 flex-col gap-0.5 self-start">
+            {SECTION_TITLES.map((title) => (
+              <button
+                key={title}
+                onClick={() => {
+                  setActiveSection(title)
+                  document.getElementById(sectionId(title))?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }}
+                className={`rounded-lg px-3 py-1.5 text-left text-sm ${
+                  activeSection === title ? 'bg-vt-surface2 text-vt-text' : 'text-vt-muted hover:bg-vt-surface2'
+                }`}
+              >
+                {title}
+              </button>
+            ))}
+          </nav>
+        )}
+       <div className="min-w-0 max-w-2xl flex-1">
 
         {loading ? (
           <p className="text-xs text-vt-muted">Loading…</p>
@@ -478,14 +496,8 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
           </div>
         )}
 
-        <div className="mt-5 flex justify-end">
-          <button
-            onClick={onClose}
-            className="rounded-lg border border-vt-border px-3 py-1.5 text-sm text-vt-muted hover:bg-vt-surface2"
-          >
-            Close
-          </button>
-        </div>
+       </div>
+       </div>
       </div>
 
       {showRecovery && <RecoveryModal onClose={() => setShowRecovery(false)} />}
@@ -633,6 +645,6 @@ export function SettingsModal({ onClose }: SettingsModalProps): JSX.Element {
           </div>
         </div>
       )}
-    </ModalBackdrop>
+    </div>
   )
 }

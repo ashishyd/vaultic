@@ -6,6 +6,7 @@ import { hostnameOf } from '../lib/url'
 import { ConfirmDialog } from './ConfirmDialog'
 import { PageHeader } from './PageHeader'
 import { IconButton } from './IconButton'
+import type { PasswordAnalysis } from '../../../preload/api-types'
 import { UserIcon, CopyIcon, EyeIcon, StarIcon, PlusIcon, ShieldIcon } from './icons'
 
 interface LoginListProps {
@@ -35,7 +36,7 @@ function textColorFor(hexColor: string): string {
 }
 
 export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: LoginListProps): JSX.Element {
-  const { logins, labels, search, refresh } = useVaultStore()
+  const { logins, labels, search, refresh, setSection } = useVaultStore()
   const push = useToastStore((s) => s.push)
   const [revealed, setRevealed] = useState<Map<string, string>>(new Map())
   const [pendingDelete, setPendingDelete] = useState<{ id: string; service: string } | null>(null)
@@ -49,12 +50,12 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [activeTab, setActiveTab] = useState<LoginTab>('accounts')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [weakIds, setWeakIds] = useState<Set<string>>(new Set())
+  const [analysis, setAnalysis] = useState<Map<string, PasswordAnalysis>>(new Map())
 
   useEffect(() => {
     let cancelled = false
     window.vaultAPI.analyzePasswords().then((results) => {
-      if (!cancelled) setWeakIds(new Set(results.filter((r) => r.strength === 'weak').map((r) => r.id)))
+      if (!cancelled) setAnalysis(new Map(results.map((r) => [r.id, r])))
     })
     return () => {
       cancelled = true
@@ -87,6 +88,11 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
   const remaining = filtered.length - visible.length
   // Falls back to the first row so the detail pane is never empty while the list has items.
   const sel = filtered.find((l) => l.id === selectedId) ?? filtered[0] ?? null
+
+  const selAnalysis = sel ? analysis.get(sel.id) : undefined
+  const issue = [selAnalysis?.reused && 'Reused', selAnalysis?.stale && `${selAnalysis.ageDays} days old`]
+    .filter(Boolean)
+    .join(', ')
 
   function selectLogin(id: string): void {
     if (id === sel?.id) return
@@ -125,6 +131,19 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
   async function handleCopyPassword(id: string): Promise<void> {
     const ok = await window.vaultAPI.copyLoginPassword(id)
     push(ok ? 'Copied to clipboard' : 'Touch ID failed or was cancelled', ok ? 'success' : 'error')
+  }
+
+  // Enter on a login row (or the list itself) copies that login's password; other targets keep native behaviour.
+  function handleListKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
+    if (e.key !== 'Enter' || e.repeat) return
+    const target = e.target as HTMLElement
+    const rowId = target.closest<HTMLElement>('[data-login-id]')?.dataset.loginId
+    if (!rowId && target !== e.currentTarget) return
+    const id = rowId ?? sel?.id
+    if (!id) return
+    e.preventDefault()
+    selectLogin(id)
+    void handleCopyPassword(id)
   }
 
   function handleCopyUsername(username: string): void {
@@ -334,7 +353,7 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
                 )}
               </div>
             ) : (
-              <div className="flex flex-col gap-0.5">
+              <div className="flex flex-col gap-0.5" tabIndex={-1} onKeyDown={handleListKeyDown}>
                 {visible.map((login) => {
                   const active = login.id === sel?.id
                   return (
@@ -352,6 +371,7 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
                       )}
                       <button
                         onClick={() => selectLogin(login.id)}
+                        data-login-id={login.id}
                         aria-pressed={active}
                         className="flex min-w-0 flex-1 items-center gap-3 border-none bg-transparent py-2 text-left"
                       >
@@ -362,7 +382,7 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
                           <span className="truncate text-sm font-medium text-vt-text">{login.service}</span>
                           {login.username && <span className="truncate text-xs text-vt-muted">{login.username}</span>}
                         </span>
-                        {weakIds.has(login.id) && (
+                        {analysis.get(login.id)?.strength === 'weak' && (
                           <span className="rounded bg-vt-danger/10 px-1.5 py-0.5 text-[11px] text-vt-danger">Weak</span>
                         )}
                         {login.favorite && <StarIcon size={14} filled />}
@@ -401,6 +421,12 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
                     <StarIcon size={14} filled={sel.favorite} />
                   </IconButton>
                   <button
+                    onClick={() => void handleCopyPassword(sel.id)}
+                    className="rounded-lg bg-vt-teal px-3 py-1.5 text-sm font-medium text-vt-bg hover:brightness-110 disabled:opacity-50"
+                  >
+                    Copy password <span className="font-mono text-[11px]">↵</span>
+                  </button>
+                  <button
                     onClick={() => onEdit(sel.id)}
                     className="rounded-lg bg-vt-teal px-3 py-1.5 text-sm font-medium text-vt-bg hover:brightness-110 disabled:opacity-50"
                   >
@@ -425,11 +451,19 @@ export function LoginList({ onEdit, onManageLabels, onAdd, onImportLogins }: Log
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <span className="flex items-center gap-2 text-xs text-vt-muted">
                       Password
-                      {weakIds.has(sel.id) && (
+                      {analysis.get(sel.id)?.strength === 'weak' && (
                         <span className="rounded bg-vt-danger/10 px-1.5 py-0.5 text-[11px] text-vt-danger">Weak</span>
                       )}
                     </span>
                     <span className="break-all font-mono text-xs">{revealed.get(sel.id) ?? '••••••••••••••••'}</span>
+                    {issue && (
+                      <span className="flex items-center gap-2 text-xs text-vt-danger">
+                        {issue}
+                        <button onClick={() => setSection('analysis')} className="text-vt-teal hover:underline">
+                          Fix
+                        </button>
+                      </span>
+                    )}
                   </div>
                   <IconButton onClick={() => toggleReveal(sel.id)} title={revealed.has(sel.id) ? 'Hide' : 'Show'}>
                     <EyeIcon size={14} />
